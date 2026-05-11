@@ -44,6 +44,17 @@ const emptyMetric: LivenessMetric = {
   mouthRatio: 0
 };
 
+const FACE_MESH_SOURCES = [
+  {
+    scriptUrl: "/vendor/mediapipe/face_mesh/face_mesh.js",
+    assetBaseUrl: "/vendor/mediapipe/face_mesh"
+  },
+  {
+    scriptUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js",
+    assetBaseUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"
+  }
+];
+
 export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLivenessCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -90,26 +101,18 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   useEffect(() => {
     let disposed = false;
 
-    loadFaceMeshScript()
-      .then(() => {
-        if (disposed || !window.FaceMesh) return;
-        const faceMesh = new window.FaceMesh({
-          locateFile: (file) => `/vendor/mediapipe/face_mesh/${file}`
-        });
-        faceMesh.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: true,
-          selfieMode: true,
-          minDetectionConfidence: 0.65,
-          minTrackingConfidence: 0.65
-        });
+    createFaceMesh()
+      .then((faceMesh) => {
+        if (disposed) {
+          faceMesh.close();
+          return;
+        }
         faceMesh.onResults((results: Results) => {
           const landmarks = results.multiFaceLandmarks?.[0];
           const nextMetric = landmarks ? readLivenessMetric(landmarks) : emptyMetric;
           setMetric(nextMetric);
         });
         faceMeshRef.current = faceMesh;
-        return faceMesh.initialize();
       })
       .then(() => {
         if (!disposed) setModelReady(true);
@@ -217,9 +220,36 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   );
 }
 
-function loadFaceMeshScript() {
+async function createFaceMesh() {
+  let lastError: unknown;
+  for (const source of FACE_MESH_SOURCES) {
+    try {
+      await loadFaceMeshScript(source.scriptUrl);
+      if (!window.FaceMesh) throw new Error("FaceMesh global missing");
+      const faceMesh = new window.FaceMesh({
+        locateFile: (file) => `${source.assetBaseUrl}/${file}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        selfieMode: true,
+        minDetectionConfidence: 0.65,
+        minTrackingConfidence: 0.65
+      });
+      await faceMesh.initialize();
+      return faceMesh;
+    } catch (error) {
+      lastError = error;
+      delete window.FaceMesh;
+      document.querySelector<HTMLScriptElement>(`script[data-mediapipe-face-mesh][src="${source.scriptUrl}"]`)?.remove();
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("FaceMesh failed to initialize");
+}
+
+function loadFaceMeshScript(scriptUrl: string) {
   if (window.FaceMesh) return Promise.resolve();
-  const existing = document.querySelector<HTMLScriptElement>("script[data-mediapipe-face-mesh]");
+  const existing = document.querySelector<HTMLScriptElement>(`script[data-mediapipe-face-mesh][src="${scriptUrl}"]`);
   if (existing) {
     return new Promise<void>((resolve, reject) => {
       existing.addEventListener("load", () => resolve(), { once: true });
@@ -228,7 +258,7 @@ function loadFaceMeshScript() {
   }
   return new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "/vendor/mediapipe/face_mesh/face_mesh.js";
+    script.src = scriptUrl;
     script.async = true;
     script.dataset.mediapipeFaceMesh = "true";
     script.onload = () => resolve();
