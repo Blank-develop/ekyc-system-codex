@@ -30,9 +30,15 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
+def _str_env(name: str, default: str) -> str:
+    value = os.getenv(name)
+    return value.strip() if value and value.strip() else default
+
+
 class Settings(BaseModel):
     app_name: str = "LALIGENCE eKYC API"
     api_prefix: str = "/api"
+    database_url: str = _str_env("DATABASE_URL", "sqlite:///backend/data/laligence_profiles.sqlite3")
     min_face_match_score: float = _float_env("LALIGENCE_MIN_FACE_MATCH_SCORE", 0.68)
     max_passive_liveness_risk: float = _float_env("LALIGENCE_MAX_PASSIVE_LIVENESS_RISK", 0.34)
     max_document_fraud_risk: float = _float_env("LALIGENCE_MAX_DOCUMENT_FRAUD_RISK", 0.42)

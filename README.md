@@ -116,7 +116,7 @@ POST /api/face-login
 
 The backend runs face detection, passive liveness/anti-spoofing, and SFace matching against enrolled templates. The default returning-user match threshold is controlled by `LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD`.
 
-Prototype storage note: enrolled face templates are stored locally in `backend/data/face_profiles.json` and ignored by git/docker. Production must replace this with encrypted biometric-template storage, database unique constraints on active `user_id` and `passport_number`, explicit consent, access controls, audit logs, retention limits, and account deletion.
+Storage note: enrolled face templates and verified profile fields are stored through SQLAlchemy. Local development defaults to SQLite at `backend/data/laligence_profiles.sqlite3`; hosted deployments should set `DATABASE_URL` to PostgreSQL. Production still needs encrypted biometric-template storage, explicit consent, access controls, audit logs, retention limits, and account deletion.
 
 For local retesting, list or clear enrolled users:
 
@@ -183,6 +183,7 @@ This project now includes the deployment baseline for a public tester demo:
 - `backend/.env.example`: backend production settings.
 - `frontend/.env.example`: deployed API URL setting.
 - `.dockerignore`: keeps local datasets, virtualenvs, and build output out of the container context.
+- SQLAlchemy profile storage: PostgreSQL on Render through `DATABASE_URL`, SQLite fallback locally.
 
 Public demo safety: use sample or redacted documents only. The backend does not persist raw uploads, but sensitive identity images still pass through the server process during analysis.
 
@@ -192,10 +193,11 @@ Public demo safety: use sample or redacted documents only. The backend does not 
 2. In Render, create a Blueprint from the repository. The included `render.yaml` follows Render's [Blueprint service format](https://render.com/docs/blueprint-spec).
 3. After Render creates the services, confirm these environment variables:
    - Backend `LALIGENCE_CORS_ORIGINS`: your frontend URL, for example `https://laligence-ekyc-web.onrender.com`.
+   - Backend `DATABASE_URL`: the Render PostgreSQL internal connection string. The Blueprint wires this from `laligence-ekyc-db`.
    - Frontend `VITE_API_BASE_URL`: your backend URL, for example `https://laligence-ekyc-api.onrender.com`.
 4. Open the frontend URL and test with sample/redacted passport images.
 
-The free Render tier can sleep between requests. Use a paid instance when you want smoother camera demos and model warm starts.
+The free Render tier can sleep between requests. Render free PostgreSQL is useful for demos but should not be treated as durable production storage. Use paid services when you want smoother camera demos, model warm starts, backups, and stable retention.
 
 ### Run Backend With Docker Locally
 
@@ -209,6 +211,7 @@ docker run --rm -p 8000:8000 \
 ### Production Settings
 
 - `LALIGENCE_CORS_ORIGINS`: comma-separated allowed frontend origins.
+- `DATABASE_URL`: PostgreSQL connection string for hosted profile storage; defaults to local SQLite when omitted.
 - `LALIGENCE_MAX_UPLOAD_SIZE_BYTES`: upload cap, default `8388608`.
 - `LALIGENCE_MAX_REQUESTS_PER_MINUTE`: simple per-IP API limit, default `240`; set `0` to disable.
 - `LALIGENCE_ALLOWED_UPLOAD_CONTENT_TYPES`: allowed image MIME types.

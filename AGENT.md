@@ -22,6 +22,7 @@ Build a web-first, mobile-ready eKYC system for passport identity proofing align
 - `frontend/src/assets/logo.png`: LALIGENCE logo and brand anchor.
 - `Dockerfile`: deployable backend container with Tesseract and local face model installation.
 - `render.yaml`: public-demo Render Blueprint for the API and static frontend.
+- Profile storage uses SQLAlchemy: PostgreSQL when `DATABASE_URL` is set, SQLite fallback at `backend/data/laligence_profiles.sqlite3` for local development.
 
 ## Design System
 
@@ -74,11 +75,13 @@ Brand adaptation:
   - `POST /api/verifications` requires `{ "user_id": "..." }`.
   - One `user_id` maps to one active `face_id`; repeated enrollment for the same user updates that active profile.
   - One `passport_number` maps to one verified profile; enrolling the same passport under another `user_id` must be rejected.
-  - Store verified profile fields plus a face template in `backend/data/face_profiles.json` for the prototype only.
+  - Store verified profile fields plus a face template through `FaceProfileStore`, backed by SQLAlchemy.
+  - Use PostgreSQL in hosted deployments through `DATABASE_URL`; local development falls back to SQLite.
+  - The `face_profiles` table enforces unique `user_id`, `passport_number`, and `verification_session_id` values.
   - `backend/data/` is ignored by git and docker context.
   - `POST /api/face-login` must run passive liveness before matching a returning user.
   - Local retesting can use `GET /api/profiles`, `DELETE /api/profiles/{user_id}`, and `DELETE /api/profiles`; these are demo admin endpoints and must be protected or removed for production.
-  - Production must replace local JSON template storage with encrypted biometric-template storage, database unique constraints, consent, access controls, audit logs, retention limits, and deletion.
+  - Production must add encrypted biometric-template storage, consent, access controls, audit logs, retention limits, and deletion workflows around the database.
 - OpenCV face model files live under `backend/models/face/`; install them with `python3 scripts/install_face_models.py`.
 - Optional trained document fraud ONNX adapter:
   - Set `LALIGENCE_DOCUMENT_FRAUD_ONNX_PATH=/absolute/path/to/model.onnx`.

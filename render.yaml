@@ -13,6 +13,10 @@ services:
         value: 8388608
       - key: LALIGENCE_MAX_REQUESTS_PER_MINUTE
         value: 240
+      - key: DATABASE_URL
+        fromDatabase:
+          name: laligence-ekyc-db
+          property: connectionString
   - type: web
     name: laligence-ekyc-web
     runtime: static
@@ -25,3 +29,7 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+databases:
+  - name: laligence-ekyc-db
+    plan: free
