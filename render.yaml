@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: laligence-ekyc-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: LALIGENCE_CORS_ORIGINS
+        value: https://laligence-ekyc-web.onrender.com
+      - key: LALIGENCE_MAX_UPLOAD_SIZE_BYTES
+        value: 8388608
+      - key: LALIGENCE_MAX_REQUESTS_PER_MINUTE
+        value: 240
+  - type: web
+    name: laligence-ekyc-web
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://laligence-ekyc-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

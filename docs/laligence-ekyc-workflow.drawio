@@ -1,0 +1,129 @@
+<mxfile host="app.diagrams.net" modified="2026-05-11T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="laligence-ekyc-workflow" name="LALIGENCE eKYC Workflow">
+    <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="LALIGENCE Passport eKYC Workflow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=32;fontStyle=1;fontColor=#081632;" vertex="1" parent="1">
+          <mxGeometry x="380" y="30" width="840" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="Public demo: process sample or redacted identity documents only. Raw media is analyzed in memory; verification results and scores are the retained output." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontSize=14;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="90" width="820" height="64" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="frontendLane" value="Frontend Web / Mobile Browser" style="swimlane;html=1;rounded=1;startSize=36;fillColor=#f6f8fc;strokeColor=#dfe5ef;fontColor=#081632;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="50" y="190" width="470" height="760" as="geometry"/>
+        </mxCell>
+        <mxCell id="backendLane" value="Python FastAPI Backend" style="swimlane;html=1;rounded=1;startSize=36;fillColor=#f6f8fc;strokeColor=#dfe5ef;fontColor=#081632;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="565" y="190" width="500" height="760" as="geometry"/>
+        </mxCell>
+        <mxCell id="decisionLane" value="Decision / Stored Result" style="swimlane;html=1;rounded=1;startSize=36;fillColor=#f6f8fc;strokeColor=#dfe5ef;fontColor=#081632;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="190" width="430" height="760" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="intro" value="Introduction page&#xa;Logo, capabilities, demo warning" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="260" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="session" value="Create verification session&#xa;POST /api/verifications" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="365" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="passportUi" value="Step 1: Passport evidence&#xa;Upload file or camera capture" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="470" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="livenessUi" value="Step 2: Active face liveness&#xa;Blink, turn left/right, open mouth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="610" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="gestureUi" value="Step 3: Hand gesture challenge&#xa;Random target circle, 3 gestures" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="715" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="selfieUi" value="Step 4: Selfie capture&#xa;Face match + passive liveness" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="110" y="820" width="350" height="72" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uploadApi" value="Document upload API&#xa;POST /api/verifications/{id}/document" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="260" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="guardrails" value="Request guardrails&#xa;CORS allowlist, rate limit, image type, upload size" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="365" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="documentAnalysis" value="Passport fraud module&#xa;Quality, document likeness, OCR/MRZ, expiry, recapture risk, tamper risk" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="470" width="350" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="portraitRef" value="Document portrait embedding&#xa;YuNet face detection + SFace reference" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="600" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="challengeApi" value="Challenge completion API&#xa;POST /api/verifications/{id}/challenge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="715" width="350" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="selfieApi" value="Selfie analysis API&#xa;POST /api/verifications/{id}/selfie" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="820" width="350" height="72" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="docDecision" value="Document accepted?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1215" y="470" width="170" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="selfieChecks" value="Selfie model checks&#xa;Exactly one human face, face confidence, SFace match, facenox/Silent-FAS anti-spoof, screen/phone cues" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10255a;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="645" width="340" height="104" as="geometry"/>
+        </mxCell>
+        <mxCell id="finalDecision" value="Final decision&#xa;Passed, rejected, or pending" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#13795b;fontColor=#081632;fontSize=15;fontStyle=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="820" width="340" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="store" value="Store verification results only&#xa;Scores, reason codes, timestamps, OCR fields" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e9eef8;strokeColor=#18336f;fontColor=#081632;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1175" y="930" width="290" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="reject" value="Reject and require retry&#xa;Document or biometric hard-fail" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f4;strokeColor=#b42318;fontColor=#081632;fontSize=14;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="275" width="260" height="72" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="intro" target="session">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="session" target="passportUi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="passportUi" target="uploadApi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="uploadApi" target="guardrails">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="guardrails" target="documentAnalysis">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="documentAnalysis" target="docDecision">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b42318;endArrow=block;endFill=1;fontColor=#b42318;fontStyle=1;" edge="1" parent="1" source="docDecision" target="reject">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#13795b;endArrow=block;endFill=1;fontColor=#13795b;fontStyle=1;" edge="1" parent="1" source="docDecision" target="portraitRef">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="portraitRef" target="livenessUi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="livenessUi" target="gestureUi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="gestureUi" target="challengeApi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="challengeApi" target="selfieUi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="selfieUi" target="selfieApi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="selfieApi" target="selfieChecks">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="selfieChecks" target="finalDecision">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10255a;endArrow=block;endFill=1;" edge="1" parent="1" source="finalDecision" target="store">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

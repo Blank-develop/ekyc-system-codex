@@ -1,0 +1,124 @@
+<mxfile host="app.diagrams.net" modified="2026-05-11T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="simple-end-to-end" name="Simple End-to-End Workflow">
+    <mxGraphModel dx="1500" dy="950" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="LALIGENCE eKYC: Simple End-to-End Workflow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=30;fontStyle=1;fontColor=#081632;" vertex="1" parent="1">
+          <mxGeometry x="270" y="30" width="960" height="48" as="geometry"/>
+        </mxCell>
+        <mxCell id="storageNote" value="Biometric storage note: store an encrypted face template / face ID, not raw selfie images. Require consent, access control, audit logs, retention policy, and user deletion." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontSize=14;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="290" y="90" width="920" height="64" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="start" value="User starts verification" style="ellipse;whiteSpace=wrap;html=1;fillColor=#081632;strokeColor=#081632;fontColor=#ffffff;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="245" width="170" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="upload" value="1. Upload passport&#xa;or take passport photo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="310" y="235" width="230" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="docCheck" value="2. System checks document&#xa;OCR, MRZ, expiry, quality, fraud risk" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="225" width="290" height="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="docPass" value="Document passed?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="970" y="225" width="160" height="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="docRetry" value="Rejected&#xa;User re-uploads document" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f4;strokeColor=#b42318;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="235" width="220" height="92" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="activeLive" value="3. Active face liveness&#xa;Blink / turn / open mouth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="160" y="430" width="250" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="gesture" value="4. Hand gesture challenge&#xa;Perform 3 random gestures" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="480" y="430" width="250" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="selfie" value="5. Capture selfie&#xa;Face match + passive liveness" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="430" width="250" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="bioPass" value="Biometric checks passed?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="420" width="180" height="112" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="reject" value="Verification rejected&#xa;Show reason codes and retry path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f4;strokeColor=#b42318;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="625" width="240" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="approve" value="6. Verification passed&#xa;Create verified identity profile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fbf7;strokeColor=#13795b;fontColor=#081632;fontSize=15;fontStyle=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="625" width="260" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="profileStore" value="Store verified profile&#xa;Face ID/template, first name, last name, age/DOB, nationality, passport number, expiry, verification date" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e9eef8;strokeColor=#18336f;fontColor=#081632;fontSize=14;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="600" width="310" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="returnUser" value="Returning user login" style="ellipse;whiteSpace=wrap;html=1;fillColor=#081632;strokeColor=#081632;fontColor=#ffffff;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="790" width="170" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="faceLogin" value="Face login&#xa;Capture live face + anti-spoof check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="310" y="780" width="250" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="matchProfile" value="Match face template&#xa;against stored Face ID" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#18336f;fontColor=#081632;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="780" width="250" height="92" as="geometry"/>
+        </mxCell>
+        <mxCell id="loginDecision" value="Match + liveness passed?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff3c4;strokeColor=#d9ae27;fontColor=#081632;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="770" width="180" height="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="loginOk" value="Login success&#xa;Load user profile data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fbf7;strokeColor=#13795b;fontColor=#081632;fontSize=15;fontStyle=1;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="770" width="210" height="92" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="start" target="upload">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="upload" target="docCheck">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="docCheck" target="docPass">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b42318;endArrow=block;endFill=1;fontColor=#b42318;fontStyle=1;" edge="1" parent="1" source="docPass" target="docRetry">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#13795b;endArrow=block;endFill=1;fontColor=#13795b;fontStyle=1;" edge="1" parent="1" source="docPass" target="activeLive">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="activeLive" target="gesture">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="gesture" target="selfie">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="selfie" target="bioPass">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b42318;endArrow=block;endFill=1;fontColor=#b42318;fontStyle=1;" edge="1" parent="1" source="bioPass" target="reject">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#13795b;endArrow=block;endFill=1;fontColor=#13795b;fontStyle=1;" edge="1" parent="1" source="bioPass" target="approve">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#13795b;endArrow=block;endFill=1;" edge="1" parent="1" source="approve" target="profileStore">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="returnUser" target="faceLogin">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="faceLogin" target="matchProfile">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;" edge="1" parent="1" source="matchProfile" target="loginDecision">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#13795b;endArrow=block;endFill=1;fontColor=#13795b;fontStyle=1;" edge="1" parent="1" source="loginDecision" target="loginOk">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b42318;endArrow=block;endFill=1;fontColor=#b42318;fontStyle=1;" edge="1" parent="1" source="loginDecision" target="reject">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#18336f;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="profileStore" target="matchProfile">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

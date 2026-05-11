@@ -1,0 +1,14 @@
+{
+  "name": "laligence-ekyc-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "backend": "uvicorn app.main:app --reload --app-dir backend --host 0.0.0.0 --port 8000"
+  },
+  "workspaces": [
+    "frontend"
+  ]
+}
