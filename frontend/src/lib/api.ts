@@ -94,21 +94,69 @@ export interface FaceLoginResponse {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const NETWORK_RETRY_DELAYS_MS = [900, 2200];
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${API_BASE_URL}${path}`, init);
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return response.json() as Promise<T>;
+type RequestOptions = RequestInit & {
+  retries?: number;
+  timeoutMs?: number;
 };
+
+const request = async <T>(path: string, init: RequestOptions = {}): Promise<T> => {
+  const { retries = 1, timeoutMs = 45000, ...requestInit } = init;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...requestInit,
+        signal: controller.signal
+      });
+      window.clearTimeout(timeout);
+      if (!response.ok) {
+        throw new Error(await readableApiError(response));
+      }
+      return response.json() as Promise<T>;
+    } catch (error) {
+      window.clearTimeout(timeout);
+      lastError = error;
+      if (!isRetryableNetworkError(error) || attempt >= retries) break;
+      await delay(NETWORK_RETRY_DELAYS_MS[Math.min(attempt, NETWORK_RETRY_DELAYS_MS.length - 1)]);
+    }
+  }
+
+  throw normalizeNetworkError(lastError);
+};
+
+const readableApiError = async (response: Response) => {
+  const message = await response.text();
+  return message || `Request failed with status ${response.status}.`;
+};
+
+const isRetryableNetworkError = (error: unknown) => {
+  return error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError");
+};
+
+const normalizeNetworkError = (error: unknown) => {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new Error("The server took too long to respond. Render may be waking up, please try again.");
+  }
+  if (error instanceof TypeError) {
+    return new Error("Could not reach the verification server. Check your connection and try again.");
+  }
+  return error instanceof Error ? error : new Error("Something went wrong.");
+};
+
+const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export const api = {
   createSession: (userId: string) =>
     request<VerificationResult>("/api/verifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId })
+      body: JSON.stringify({ user_id: userId }),
+      retries: 2
     }),
 
   uploadDocument: (sessionId: string, file: File | Blob) => {
@@ -116,7 +164,9 @@ export const api = {
     body.append("file", file, file instanceof File ? file.name : "passport-capture.jpg");
     return request<VerificationResult>(`/api/verifications/${sessionId}/document`, {
       method: "POST",
-      body
+      body,
+      retries: 2,
+      timeoutMs: 90000
     });
   },
 
@@ -124,7 +174,8 @@ export const api = {
     request<VerificationResult>(`/api/verifications/${sessionId}/challenge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_id: challengeId, passed })
+      body: JSON.stringify({ challenge_id: challengeId, passed }),
+      retries: 2
     }),
 
   analyzeSelfie: (sessionId: string, file: File | Blob) => {
@@ -132,13 +183,17 @@ export const api = {
     body.append("file", file, file instanceof File ? file.name : "selfie-capture.jpg");
     return request<VerificationResult>(`/api/verifications/${sessionId}/selfie`, {
       method: "POST",
-      body
+      body,
+      retries: 2,
+      timeoutMs: 90000
     });
   },
 
   enrollFace: (sessionId: string) =>
     request<FaceEnrollmentResponse>(`/api/verifications/${sessionId}/enroll-face`, {
-      method: "POST"
+      method: "POST",
+      retries: 2,
+      timeoutMs: 60000
     }),
 
   faceLogin: (file: File | Blob) => {
@@ -146,7 +201,9 @@ export const api = {
     body.append("file", file, file instanceof File ? file.name : "face-login.jpg");
     return request<FaceLoginResponse>("/api/face-login", {
       method: "POST",
-      body
+      body,
+      retries: 2,
+      timeoutMs: 90000
     });
   }
 };
