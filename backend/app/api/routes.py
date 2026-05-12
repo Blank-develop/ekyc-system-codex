@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.schemas import (
@@ -70,8 +71,8 @@ async def upload_document(
 ) -> VerificationResult:
     _get_session(session_id)
     content = await _read_upload(file)
-    analysis = analyzer.analyze(content, file.filename or "passport-upload", ocr_text=ocr_text)
-    face_result = face_recognizer.extract(content, "document")
+    analysis = await run_in_threadpool(analyzer.analyze, content, file.filename or "passport-upload", ocr_text)
+    face_result = await run_in_threadpool(face_recognizer.extract, content, "document")
     analysis.checks.update(face_result.checks)
     if face_result.embedding is not None:
         store.set_document_face_embedding(session_id, face_result.embedding)
@@ -97,8 +98,13 @@ async def analyze_selfie(
     _get_session(session_id)
     content = await _read_upload(file)
     reference_embedding = store.get_document_face_embedding(session_id)
-    analysis = selfie_analyzer.analyze(content, file.filename or "selfie-capture.jpg", reference_embedding=reference_embedding)
-    selfie_face = face_recognizer.extract(content, "selfie")
+    analysis = await run_in_threadpool(
+        selfie_analyzer.analyze,
+        content,
+        file.filename or "selfie-capture.jpg",
+        reference_embedding,
+    )
+    selfie_face = await run_in_threadpool(face_recognizer.extract, content, "selfie")
     store.set_selfie_face_embedding(session_id, selfie_face.embedding if analysis.passive_liveness_passed else None)
     return store.set_selfie(session_id, analysis)
 
@@ -112,7 +118,7 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
     if selfie_embedding is None:
         raise HTTPException(status_code=409, detail="A verified live selfie template is required before enrollment.")
     try:
-        profile = profile_store.enroll(session, selfie_embedding)
+        profile = await run_in_threadpool(profile_store.enroll, session, selfie_embedding)
     except ProfileEnrollmentConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
@@ -120,26 +126,27 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
 
 @router.get("/profiles", response_model=UserProfileListResponse)
 async def list_profiles() -> UserProfileListResponse:
-    return UserProfileListResponse(profiles=profile_store.list_profiles())
+    profiles = await run_in_threadpool(profile_store.list_profiles)
+    return UserProfileListResponse(profiles=profiles)
 
 
 @router.delete("/profiles/{user_id}", response_model=DeleteProfileResponse)
 async def delete_profile(user_id: str) -> DeleteProfileResponse:
-    deleted_count = profile_store.delete_user(user_id)
+    deleted_count = await run_in_threadpool(profile_store.delete_user, user_id)
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
 @router.delete("/profiles", response_model=DeleteProfileResponse)
 async def delete_profiles() -> DeleteProfileResponse:
-    deleted_count = profile_store.delete_all()
+    deleted_count = await run_in_threadpool(profile_store.delete_all)
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
 @router.post("/face-login", response_model=FaceLoginResponse)
 async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     content = await _read_upload(file)
-    face_result = face_recognizer.extract(content, "login")
-    passive_result = selfie_analyzer.passive_spoof.analyze(content, face_result.face_box)
+    face_result = await run_in_threadpool(face_recognizer.extract, content, "login")
+    passive_result = await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
     signals = [*face_result.signals, *passive_result.signals]
     reason_codes: list[str] = []
 
@@ -160,7 +167,12 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     match = None
     match_score = 0.0
     if not reason_codes and face_result.embedding is not None:
-        match = profile_store.match(face_result.embedding, face_recognizer.compare, settings.face_login_match_threshold)
+        match = await run_in_threadpool(
+            profile_store.match,
+            face_result.embedding,
+            face_recognizer.compare,
+            settings.face_login_match_threshold,
+        )
         match_score = match.score
         if match.profile is None:
             reason_codes.append("FACE_LOGIN_NO_MATCH")
