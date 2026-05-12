@@ -127,6 +127,9 @@ class FaceProfileStore:
             records = db.scalars(select(FaceProfileRecord).where(FaceProfileRecord.active.is_(True))).all()
             return [self._public_profile(self._record_to_dict(record)) for record in records]
 
+    def prime_cache(self) -> None:
+        self._active_records()
+
     def delete_user(self, user_id: str) -> int:
         with self._sessionmaker().begin() as db:
             result = db.execute(delete(FaceProfileRecord).where(FaceProfileRecord.user_id == user_id))

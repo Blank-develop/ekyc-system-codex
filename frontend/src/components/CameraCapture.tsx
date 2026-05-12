@@ -6,9 +6,18 @@ interface CameraCaptureProps {
   overlay?: "document" | "face" | "hand";
   onCapture: (blob: Blob) => void;
   disabled?: boolean;
+  maxCaptureWidth?: number;
+  jpegQuality?: number;
 }
 
-export function CameraCapture({ label, overlay = "face", onCapture, disabled = false }: CameraCaptureProps) {
+export function CameraCapture({
+  label,
+  overlay = "face",
+  onCapture,
+  disabled = false,
+  maxCaptureWidth,
+  jpegQuality = 0.92
+}: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -44,14 +53,17 @@ export function CameraCapture({ label, overlay = "face", onCapture, disabled = f
     const video = videoRef.current;
     if (!video) return;
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const sourceWidth = video.videoWidth || 1280;
+    const sourceHeight = video.videoHeight || 720;
+    const scale = maxCaptureWidth && sourceWidth > maxCaptureWidth ? maxCaptureWidth / sourceWidth : 1;
+    canvas.width = Math.round(sourceWidth * scale);
+    canvas.height = Math.round(sourceHeight * scale);
     const context = canvas.getContext("2d");
     if (!context) return;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (blob) onCapture(blob);
-    }, "image/jpeg", 0.92);
+    }, "image/jpeg", jpegQuality);
   };
 
   useEffect(() => {

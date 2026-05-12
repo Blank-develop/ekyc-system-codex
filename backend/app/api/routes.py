@@ -54,6 +54,12 @@ def _signal(code: str, label: str, severity: str, score: float) -> FraudSignal:
     return FraudSignal(code=code, label=label, severity=severity, score=max(0.0, min(score, 1.0)))
 
 
+def warm_face_login_dependencies() -> None:
+    face_recognizer.warm_up()
+    selfie_analyzer.passive_spoof.warm_up()
+    profile_store.prime_cache()
+
+
 @router.post("/verifications", response_model=VerificationResult)
 async def create_verification(payload: CreateVerificationRequest) -> VerificationResult:
     return store.create(payload.user_id)
@@ -150,10 +156,9 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     face_started_at = time.perf_counter()
     face_result = await run_in_threadpool(face_recognizer.extract, content, "login")
     face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
-    passive_started_at = time.perf_counter()
-    passive_result = await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
-    passive_elapsed_ms = round((time.perf_counter() - passive_started_at) * 1000, 2)
-    signals = [*face_result.signals, *passive_result.signals]
+    passive_result = None
+    passive_elapsed_ms = 0.0
+    signals = [*face_result.signals]
     reason_codes: list[str] = []
 
     if face_result.embedding is None:
@@ -164,8 +169,13 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     if int(face_result.checks.get("login_face_count") or 0) > 1:
         reason_codes.append("FACE_LOGIN_MULTIPLE_FACES")
         signals.append(_signal("FACE_LOGIN_MULTIPLE_FACES", "Multiple faces detected during face login.", "high", 0.86))
-    if not passive_result.passed or passive_result.risk > settings.max_passive_liveness_risk:
-        reason_codes.append("FACE_LOGIN_LIVENESS_FAILED")
+    if not reason_codes:
+        passive_started_at = time.perf_counter()
+        passive_result = await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
+        passive_elapsed_ms = round((time.perf_counter() - passive_started_at) * 1000, 2)
+        signals.extend(passive_result.signals)
+        if not passive_result.passed or passive_result.risk > settings.max_passive_liveness_risk:
+            reason_codes.append("FACE_LOGIN_LIVENESS_FAILED")
     for signal in signals:
         if signal.severity == "high" and signal.code not in reason_codes:
             reason_codes.append(signal.code)
@@ -191,7 +201,7 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
         decision=Decision.passed if profile and not reason_codes else Decision.rejected,
         matched=profile is not None,
         match_score=match_score,
-        passive_liveness_risk=round(passive_result.risk, 2),
+        passive_liveness_risk=round(passive_result.risk, 2) if passive_result else 1.0,
         reason_codes=reason_codes,
         profile=profile,
         checks={
@@ -201,7 +211,7 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
             "face_login_passive_liveness_ms": passive_elapsed_ms,
             "face_login_profile_match_ms": match_elapsed_ms,
             **face_result.checks,
-            **passive_result.checks,
+            **(passive_result.checks if passive_result else {"passive_spoof_skipped": True}),
         },
         signals=signals,
     )

@@ -150,6 +150,9 @@ class OpenCvFaceRecognizer:
         dot = sum(a * b for a, b in zip(embedding_a, embedding_b))
         return round(_clamp((dot + 1) / 2), 4)
 
+    def warm_up(self) -> None:
+        self._ensure_loaded()
+
     def _ensure_loaded(self) -> str | None:
         if self._detector is not None and self._recognizer is not None:
             return None
@@ -360,6 +363,10 @@ class PassiveSpoofAnalyzer:
         self._models = [OnnxAntiSpoofModel(path) for path in paths if path.exists()]
         return self._models
 
+    def warm_up(self) -> None:
+        for model in self._load_models():
+            model.warm_up()
+
     @staticmethod
     def _face_crop(image: Image.Image, face_box: tuple[int, int, int, int] | None) -> Image.Image:
         if face_box is None:
@@ -527,6 +534,9 @@ class OnnxAntiSpoofModel:
         except Exception as exc:
             self._load_error = str(exc)
             return False
+
+    def warm_up(self) -> None:
+        self._ensure_loaded()
 
     def _probabilities(self, logits: Any) -> tuple[float, float, float]:
         import numpy as np

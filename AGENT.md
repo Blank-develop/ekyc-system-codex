@@ -80,6 +80,8 @@ Brand adaptation:
   - The `face_profiles` table enforces unique `user_id`, `passport_number`, and `verification_session_id` values.
   - `backend/data/` is ignored by git and docker context.
   - `POST /api/face-login` must run passive liveness before matching a returning user.
+  - Face ID model warmup runs in a background startup thread; keep `/health` cheap and do not block app startup on model or database warmup.
+  - Face login may skip passive PAD only when the login face already fails basic extraction/confidence/multiple-face checks, because matching cannot safely proceed.
   - Local retesting can use `GET /api/profiles`, `DELETE /api/profiles/{user_id}`, and `DELETE /api/profiles`; these are demo admin endpoints and must be protected or removed for production.
   - Production must add encrypted biometric-template storage, consent, access controls, audit logs, retention limits, and deletion workflows around the database.
 - OpenCV face model files live under `backend/models/face/`; install them with `python3 scripts/install_face_models.py`.

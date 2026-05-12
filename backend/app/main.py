@@ -1,12 +1,13 @@
 import time
 import logging
+import threading
 from collections import defaultdict, deque
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import router
+from app.api.routes import router, warm_face_login_dependencies
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -57,6 +58,18 @@ def _with_timing(request, response, started_at: float):
 
 
 app.include_router(router, prefix=settings.api_prefix)
+
+
+@app.on_event("startup")
+async def warm_models_after_startup() -> None:
+    threading.Thread(target=_warm_models, daemon=True).start()
+
+
+def _warm_models() -> None:
+    try:
+        warm_face_login_dependencies()
+    except Exception:
+        logger.exception("face_login_warmup_failed")
 
 
 @app.get("/health")

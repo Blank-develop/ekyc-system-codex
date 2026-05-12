@@ -116,6 +116,8 @@ POST /api/face-login
 
 The backend runs face detection, passive liveness/anti-spoofing, and SFace matching against enrolled templates. The default returning-user match threshold is controlled by `LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD`.
 
+The backend warms Face ID models in the background after startup and caches active profile templates in memory, so repeated returning-user login attempts avoid repeated model/database cold starts. Face login responses include timing fields under `checks` for troubleshooting.
+
 Storage note: enrolled face templates and verified profile fields are stored through SQLAlchemy. Local development defaults to SQLite at `backend/data/laligence_profiles.sqlite3`; hosted deployments should set `DATABASE_URL` to PostgreSQL. Production still needs encrypted biometric-template storage, explicit consent, access controls, audit logs, retention limits, and account deletion.
 
 For local retesting, list or clear enrolled users:

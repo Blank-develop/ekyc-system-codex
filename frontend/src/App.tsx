@@ -683,7 +683,13 @@ function FaceLoginScreen({
           )}
           {result?.profile && <ProfileSummary profile={result.profile} />}
         </div>
-        <CameraCapture label="Returning user face login" overlay="face" onCapture={onCapture} />
+        <CameraCapture
+          label="Returning user face login"
+          overlay="face"
+          onCapture={onCapture}
+          maxCaptureWidth={720}
+          jpegQuality={0.84}
+        />
       </section>
     </main>
   );
