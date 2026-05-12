@@ -8,6 +8,7 @@ from typing import Any
 
 from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat, UnidentifiedImageError
 
+from app.core.config import get_settings
 from app.models.schemas import FraudSignal
 
 
@@ -354,7 +355,9 @@ class PassiveSpoofAnalyzer:
     def _load_models(self) -> list["OnnxAntiSpoofModel"]:
         if self._models is not None:
             return self._models
-        self._models = [OnnxAntiSpoofModel(path) for path in self.model_paths if path.exists()]
+        settings = get_settings()
+        paths = self.model_paths if settings.pad_enable_companion_models else self.model_paths[:1]
+        self._models = [OnnxAntiSpoofModel(path) for path in paths if path.exists()]
         return self._models
 
     @staticmethod

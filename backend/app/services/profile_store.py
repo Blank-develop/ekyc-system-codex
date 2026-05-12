@@ -78,6 +78,7 @@ class FaceProfileStore:
         self.path = self._sqlite_path(self.database_url)
         self.engine: Engine | None = None
         self.SessionLocal: sessionmaker[Session] | None = None
+        self._active_records_cache: list[dict] | None = None
 
     def enroll(self, result: VerificationResult, face_template: list[float]) -> UserProfile:
         now = datetime.now(timezone.utc)
@@ -93,33 +94,33 @@ class FaceProfileStore:
                 record = existing if existing else FaceProfileRecord(face_id=str(profile.face_id))
                 self._apply_profile(record, profile, face_template, now)
                 db.merge(record)
+                self._active_records_cache = None
         except IntegrityError as exc:
             raise ProfileEnrollmentConflict("Profile or passport is already enrolled.") from exc
         return profile
 
     def match(self, face_template: list[float], compare, threshold: float) -> FaceLoginMatch:
-        best_record: FaceProfileRecord | None = None
+        best_record: dict | None = None
         best_score = 0.0
-        with self._sessionmaker()() as db:
-            records = db.scalars(select(FaceProfileRecord).where(FaceProfileRecord.active.is_(True))).all()
-            for record in records:
-                if not isinstance(record.face_template, list):
-                    continue
-                score = float(compare(record.face_template, face_template))
-                if score > best_score:
-                    best_score = score
-                    best_record = record
+        for record in self._active_records():
+            stored_template = record.get("face_template")
+            if not isinstance(stored_template, list):
+                continue
+            score = float(compare(stored_template, face_template))
+            if score > best_score:
+                best_score = score
+                best_record = record
 
-            if best_record is None or best_score < threshold:
-                return FaceLoginMatch(profile=None, score=round(best_score, 2))
+        if best_record is None or best_score < threshold:
+            return FaceLoginMatch(profile=None, score=round(best_score, 2))
 
-            now = datetime.now(timezone.utc)
-            best_record.last_login_at = now
-            best_record.updated_at = now
-            db.commit()
-            profile = self._public_profile(self._record_to_dict(best_record))
-            profile.last_login_at = now
-            return FaceLoginMatch(profile=profile, score=round(best_score, 2))
+        now = datetime.now(timezone.utc)
+        self._mark_login(best_record["face_id"], now)
+        best_record["last_login_at"] = now
+        best_record["updated_at"] = now
+        profile = self._public_profile(best_record)
+        profile.last_login_at = now
+        return FaceLoginMatch(profile=profile, score=round(best_score, 2))
 
     def list_profiles(self) -> list[UserProfile]:
         with self._sessionmaker()() as db:
@@ -129,12 +130,14 @@ class FaceProfileStore:
     def delete_user(self, user_id: str) -> int:
         with self._sessionmaker().begin() as db:
             result = db.execute(delete(FaceProfileRecord).where(FaceProfileRecord.user_id == user_id))
+            self._active_records_cache = None
             return int(result.rowcount or 0)
 
     def delete_all(self) -> int:
         with self._sessionmaker().begin() as db:
             deleted_count = db.scalar(select(func.count()).select_from(FaceProfileRecord)) or 0
             db.execute(delete(FaceProfileRecord))
+            self._active_records_cache = None
             return int(deleted_count)
 
     def _find_existing(self, db: Session, result: VerificationResult) -> FaceProfileRecord | None:
@@ -261,6 +264,20 @@ class FaceProfileStore:
         with self._sessionmaker()() as db:
             records = db.scalars(select(FaceProfileRecord)).all()
             return [self._record_to_dict(record) for record in records]
+
+    def _active_records(self) -> list[dict]:
+        if self._active_records_cache is None:
+            with self._sessionmaker()() as db:
+                records = db.scalars(select(FaceProfileRecord).where(FaceProfileRecord.active.is_(True))).all()
+                self._active_records_cache = [self._record_to_dict(record) for record in records]
+        return self._active_records_cache
+
+    def _mark_login(self, face_id: str, now: datetime) -> None:
+        with self._sessionmaker().begin() as db:
+            record = db.get(FaceProfileRecord, face_id)
+            if record:
+                record.last_login_at = now
+                record.updated_at = now
 
     def _sessionmaker(self) -> sessionmaker[Session]:
         if self.SessionLocal is None:

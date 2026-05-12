@@ -219,6 +219,7 @@ docker run --rm -p 8000:8000 \
 - `LALIGENCE_MAX_PASSIVE_LIVENESS_RISK`: passive anti-spoof rejection threshold.
 - `LALIGENCE_MAX_DOCUMENT_FRAUD_RISK`: document fraud rejection threshold.
 - `LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD`: returning-user face login match threshold.
+- `LALIGENCE_PAD_ENABLE_COMPANION_MODELS`: set `true` to run the extra MiniFAS companion anti-spoof models. Default `false` keeps face login faster by using the primary facenox model plus heuristics.
 
 ## Notes
 

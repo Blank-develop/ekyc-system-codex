@@ -30,6 +30,13 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _str_env(name: str, default: str) -> str:
     value = os.getenv(name)
     return value.strip() if value and value.strip() else default
@@ -43,6 +50,7 @@ class Settings(BaseModel):
     max_passive_liveness_risk: float = _float_env("LALIGENCE_MAX_PASSIVE_LIVENESS_RISK", 0.34)
     max_document_fraud_risk: float = _float_env("LALIGENCE_MAX_DOCUMENT_FRAUD_RISK", 0.42)
     face_login_match_threshold: float = _float_env("LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD", 0.72)
+    pad_enable_companion_models: bool = _bool_env("LALIGENCE_PAD_ENABLE_COMPANION_MODELS", False)
     cors_origins: tuple[str, ...] = _csv_env(
         "LALIGENCE_CORS_ORIGINS",
         ("http://localhost:5173", "http://127.0.0.1:5173"),

@@ -1,3 +1,4 @@
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -144,9 +145,14 @@ async def delete_profiles() -> DeleteProfileResponse:
 
 @router.post("/face-login", response_model=FaceLoginResponse)
 async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
+    started_at = time.perf_counter()
     content = await _read_upload(file)
+    face_started_at = time.perf_counter()
     face_result = await run_in_threadpool(face_recognizer.extract, content, "login")
+    face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
+    passive_started_at = time.perf_counter()
     passive_result = await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
+    passive_elapsed_ms = round((time.perf_counter() - passive_started_at) * 1000, 2)
     signals = [*face_result.signals, *passive_result.signals]
     reason_codes: list[str] = []
 
@@ -166,13 +172,16 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
 
     match = None
     match_score = 0.0
+    match_elapsed_ms = 0.0
     if not reason_codes and face_result.embedding is not None:
+        match_started_at = time.perf_counter()
         match = await run_in_threadpool(
             profile_store.match,
             face_result.embedding,
             face_recognizer.compare,
             settings.face_login_match_threshold,
         )
+        match_elapsed_ms = round((time.perf_counter() - match_started_at) * 1000, 2)
         match_score = match.score
         if match.profile is None:
             reason_codes.append("FACE_LOGIN_NO_MATCH")
@@ -187,6 +196,10 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
         profile=profile,
         checks={
             "face_login_match_threshold": settings.face_login_match_threshold,
+            "face_login_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "face_login_face_extract_ms": face_elapsed_ms,
+            "face_login_passive_liveness_ms": passive_elapsed_ms,
+            "face_login_profile_match_ms": match_elapsed_ms,
             **face_result.checks,
             **passive_result.checks,
         },
