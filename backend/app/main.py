@@ -1,4 +1,5 @@
 import time
+import logging
 from collections import defaultdict, deque
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from app.core.config import get_settings
 
 settings = get_settings()
 request_log: dict[str, deque[float]] = defaultdict(deque)
+logger = logging.getLogger("laligence.api")
 
 app = FastAPI(title=settings.app_name)
 
@@ -24,11 +26,14 @@ app.add_middleware(
 
 @app.middleware("http")
 async def rate_limit(request, call_next):
+    started_at = time.perf_counter()
     if settings.max_requests_per_minute <= 0:
-        return await call_next(request)
+        response = await call_next(request)
+        return _with_timing(request, response, started_at)
     client_host = request.client.host if request.client else "unknown"
     if client_host == "testclient":
-        return await call_next(request)
+        response = await call_next(request)
+        return _with_timing(request, response, started_at)
 
     now = time.monotonic()
     window_start = now - 60
@@ -36,9 +41,19 @@ async def rate_limit(request, call_next):
     while entries and entries[0] < window_start:
         entries.popleft()
     if len(entries) >= settings.max_requests_per_minute:
-        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Please try again shortly."})
+        response = JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Please try again shortly."})
+        return _with_timing(request, response, started_at)
     entries.append(now)
-    return await call_next(request)
+    response = await call_next(request)
+    return _with_timing(request, response, started_at)
+
+
+def _with_timing(request, response, started_at: float):
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
+    response.headers["X-Process-Time-Ms"] = str(elapsed_ms)
+    if elapsed_ms >= 1000:
+        logger.warning("slow_request path=%s method=%s elapsed_ms=%.2f", request.url.path, request.method, elapsed_ms)
+    return response
 
 
 app.include_router(router, prefix=settings.api_prefix)

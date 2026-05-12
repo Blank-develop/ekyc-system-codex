@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, Date, DateTime, Integer, String, UniqueConstraint, create_engine, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.types import JSON
@@ -75,16 +76,13 @@ class FaceProfileStore:
     def __init__(self, database_url: str | Path | None = None) -> None:
         self.database_url = self._normalize_database_url(database_url)
         self.path = self._sqlite_path(self.database_url)
-        connect_args = {"check_same_thread": False} if self.database_url.startswith("sqlite") else {}
-        self.engine = create_engine(self.database_url, future=True, pool_pre_ping=True, connect_args=connect_args)
-        self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False, future=True)
-        Base.metadata.create_all(self.engine)
-        self._migrate_legacy_json_if_needed()
+        self.engine: Engine | None = None
+        self.SessionLocal: sessionmaker[Session] | None = None
 
     def enroll(self, result: VerificationResult, face_template: list[float]) -> UserProfile:
         now = datetime.now(timezone.utc)
         try:
-            with self.SessionLocal.begin() as db:
+            with self._sessionmaker().begin() as db:
                 existing = self._find_existing(db, result)
                 profile = self._profile_from_result(
                     result,
@@ -102,7 +100,7 @@ class FaceProfileStore:
     def match(self, face_template: list[float], compare, threshold: float) -> FaceLoginMatch:
         best_record: FaceProfileRecord | None = None
         best_score = 0.0
-        with self.SessionLocal() as db:
+        with self._sessionmaker()() as db:
             records = db.scalars(select(FaceProfileRecord).where(FaceProfileRecord.active.is_(True))).all()
             for record in records:
                 if not isinstance(record.face_template, list):
@@ -124,17 +122,17 @@ class FaceProfileStore:
             return FaceLoginMatch(profile=profile, score=round(best_score, 2))
 
     def list_profiles(self) -> list[UserProfile]:
-        with self.SessionLocal() as db:
+        with self._sessionmaker()() as db:
             records = db.scalars(select(FaceProfileRecord).where(FaceProfileRecord.active.is_(True))).all()
             return [self._public_profile(self._record_to_dict(record)) for record in records]
 
     def delete_user(self, user_id: str) -> int:
-        with self.SessionLocal.begin() as db:
+        with self._sessionmaker().begin() as db:
             result = db.execute(delete(FaceProfileRecord).where(FaceProfileRecord.user_id == user_id))
             return int(result.rowcount or 0)
 
     def delete_all(self) -> int:
-        with self.SessionLocal.begin() as db:
+        with self._sessionmaker().begin() as db:
             deleted_count = db.scalar(select(func.count()).select_from(FaceProfileRecord)) or 0
             db.execute(delete(FaceProfileRecord))
             return int(deleted_count)
@@ -260,14 +258,23 @@ class FaceProfileStore:
         }
 
     def _read_records(self) -> list[dict]:
-        with self.SessionLocal() as db:
+        with self._sessionmaker()() as db:
             records = db.scalars(select(FaceProfileRecord)).all()
             return [self._record_to_dict(record) for record in records]
+
+    def _sessionmaker(self) -> sessionmaker[Session]:
+        if self.SessionLocal is None:
+            connect_args = {"check_same_thread": False} if self.database_url.startswith("sqlite") else {}
+            self.engine = create_engine(self.database_url, future=True, pool_pre_ping=True, connect_args=connect_args)
+            self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False, future=True)
+            Base.metadata.create_all(self.engine)
+            self._migrate_legacy_json_if_needed()
+        return self.SessionLocal
 
     def _migrate_legacy_json_if_needed(self) -> None:
         if not self.path or self.path != DEFAULT_SQLITE_STORE_PATH or not LEGACY_PROFILE_STORE_PATH.exists():
             return
-        with self.SessionLocal() as db:
+        with self._sessionmaker()() as db:
             has_records = db.scalar(select(FaceProfileRecord.face_id).limit(1)) is not None
         if has_records:
             return
@@ -278,7 +285,7 @@ class FaceProfileStore:
         if not isinstance(legacy_records, list):
             return
         now = datetime.now(timezone.utc)
-        with self.SessionLocal.begin() as db:
+        with self._sessionmaker().begin() as db:
             for legacy in legacy_records:
                 try:
                     profile = self._public_profile(legacy)
