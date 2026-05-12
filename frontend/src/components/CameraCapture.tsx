@@ -5,15 +5,17 @@ interface CameraCaptureProps {
   label: string;
   overlay?: "document" | "face" | "hand";
   onCapture: (blob: Blob) => void;
+  disabled?: boolean;
 }
 
-export function CameraCapture({ label, overlay = "face", onCapture }: CameraCaptureProps) {
+export function CameraCapture({ label, overlay = "face", onCapture, disabled = false }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const startCamera = async () => {
+    if (disabled) return;
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -38,6 +40,7 @@ export function CameraCapture({ label, overlay = "face", onCapture }: CameraCapt
   };
 
   const capture = () => {
+    if (disabled) return;
     const video = videoRef.current;
     if (!video) return;
     const canvas = document.createElement("canvas");
@@ -69,11 +72,11 @@ export function CameraCapture({ label, overlay = "face", onCapture }: CameraCapt
       </div>
       {error && <p className="form-error" aria-live="polite">{error}</p>}
       <div className="camera-actions">
-        <button className="secondary-button" type="button" onClick={cameraReady ? stopCamera : startCamera}>
+        <button className="secondary-button" type="button" onClick={cameraReady ? stopCamera : startCamera} disabled={disabled}>
           {cameraReady ? <CameraOff size={18} /> : <Camera size={18} />}
           {cameraReady ? "Stop camera" : "Open camera"}
         </button>
-        <button className="primary-button" type="button" onClick={capture} disabled={!cameraReady}>
+        <button className="primary-button" type="button" onClick={capture} disabled={disabled || !cameraReady}>
           <RefreshCw size={18} />
           Capture
         </button>

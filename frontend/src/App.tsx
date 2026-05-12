@@ -117,6 +117,7 @@ export function App() {
 
   const sessionId = result?.session_id;
   const normalizedUserId = userId.trim();
+  const sessionReady = Boolean(sessionId);
 
   const progress = useMemo(() => {
     if (!result) return 0;
@@ -203,14 +204,22 @@ export function App() {
 
   const uploadDocument = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !sessionId) return;
+    if (!file) return;
+    if (!sessionId) {
+      setError("Verification session is still connecting. Please wait a moment and upload again.");
+      event.target.value = "";
+      return;
+    }
     uploadAndAnalyzeDocument(() => api.uploadDocument(sessionId, file), "Passport analyzed").finally(() => {
       event.target.value = "";
     });
   };
 
   const captureDocument = (blob: Blob) => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setError("Verification session is still connecting. Please wait a moment and capture again.");
+      return;
+    }
     uploadAndAnalyzeDocument(() => api.uploadDocument(sessionId, blob), "Passport capture analyzed");
   };
 
@@ -406,7 +415,13 @@ export function App() {
             {documentBusy && <DocumentUploadOverlay />}
             {activeStep === "document" && documentNotice && <DocumentAnalysisNotice notice={documentNotice} />}
             {error && <div className="alert" role="alert"><ShieldAlert size={18} />{error}</div>}
-            {activeStep === "document" && <DocumentStep onUpload={uploadDocument} onCapture={captureDocument} />}
+            {activeStep === "document" && (
+              <DocumentStep
+                disabled={!sessionReady || documentBusy}
+                onUpload={uploadDocument}
+                onCapture={captureDocument}
+              />
+            )}
             {activeStep === "liveness" && (
               <ActiveLivenessStep
                 challenges={result?.active_challenges ?? []}
@@ -727,21 +742,35 @@ function HandGestureStep({
   );
 }
 
-function DocumentStep({ onUpload, onCapture }: { onUpload: (event: ChangeEvent<HTMLInputElement>) => void; onCapture: (blob: Blob) => void }) {
+function DocumentStep({
+  disabled,
+  onUpload,
+  onCapture
+}: {
+  disabled: boolean;
+  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onCapture: (blob: Blob) => void;
+}) {
   return (
     <div className="step-layout">
       <div className="copy-block">
         <p className="eyebrow">Step 1</p>
         <h2>Capture passport evidence</h2>
         <p>Upload a clear passport image or capture one with the camera. The backend checks image quality, document-shaped evidence, file type, and fraud-risk signals.</p>
-        <label className="upload-drop" htmlFor="passport-upload">
+        {disabled && (
+          <div className="session-waiting" role="status" aria-live="polite">
+            <span />
+            Connecting verification session
+          </div>
+        )}
+        <label className={`upload-drop ${disabled ? "disabled" : ""}`} htmlFor={disabled ? undefined : "passport-upload"} aria-disabled={disabled}>
           <Upload size={24} />
           <span>Upload passport image</span>
-          <small>JPG, PNG, or WebP</small>
-          <input id="passport-upload" type="file" accept="image/*" onChange={onUpload} />
+          <small>{disabled ? "Wait until the session is ready" : "JPG, PNG, or WebP"}</small>
+          <input id="passport-upload" type="file" accept="image/*" onChange={onUpload} disabled={disabled} />
         </label>
       </div>
-      <CameraCapture label="Passport camera capture" overlay="document" onCapture={onCapture} />
+      <CameraCapture label="Passport camera capture" overlay="document" onCapture={onCapture} disabled={disabled} />
     </div>
   );
 }

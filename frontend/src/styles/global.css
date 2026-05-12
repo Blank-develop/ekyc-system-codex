@@ -952,6 +952,14 @@ p {
   background: #fffdf4;
 }
 
+.upload-drop.disabled,
+.upload-drop.disabled:hover {
+  cursor: not-allowed;
+  color: var(--muted);
+  border-color: rgba(16, 37, 90, 0.18);
+  background: #f6f8fc;
+}
+
 .upload-drop small {
   color: var(--muted);
   font-weight: 600;
@@ -962,6 +970,28 @@ p {
   width: 1px;
   height: 1px;
   opacity: 0;
+}
+
+.session-waiting {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid rgba(24, 51, 111, 0.14);
+  border-radius: 8px;
+  color: var(--navy-900);
+  background: #f7f9fe;
+  font-weight: 800;
+}
+
+.session-waiting span {
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(24, 51, 111, 0.18);
+  border-top-color: var(--gold-600);
+  border-radius: 999px;
+  animation: spin 700ms linear infinite;
 }
 
 .camera-shell {
