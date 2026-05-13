@@ -140,7 +140,7 @@ cd sdk/flutter && dart pub get && dart analyze && dart test
 ```
 
 - TypeScript SDK: `sdk/typescript` for React Native, Expo, or any mobile JavaScript client.
-- Flutter SDK: `sdk/flutter` for Dart/Flutter apps.
+- Flutter SDK: `sdk/flutter`, published as `laligence_ekyc` for Dart/Flutter apps.
 
 Both SDKs expose `createVerification`, `uploadDocument`, `completeChallenge`, `analyzeSelfie`, `enrollFace`, `faceLogin`, and testing-only profile admin helpers. See `docs/mobile-sdk.md` and `docs/flutter-sdk.md` for mobile examples.
 

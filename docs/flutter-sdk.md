@@ -8,8 +8,7 @@ From a Flutter app in a sibling folder:
 
 ```yaml
 dependencies:
-  laligence_ekyc_sdk:
-    path: ../ekyc-system-codex/sdk/flutter
+  laligence_ekyc: ^0.3.0
 ```
 
 Then run:
@@ -23,7 +22,7 @@ For company-wide use, publish `sdk/flutter` to a private pub registry or include
 ## Signup And Verification
 
 ```dart
-import 'package:laligence_ekyc_sdk/laligence_ekyc_sdk.dart';
+import 'package:laligence_ekyc/laligence_ekyc.dart';
 
 final ekyc = EkycClient(
   baseUrl: 'https://ekyc-system-backend-singapore.onrender.com',

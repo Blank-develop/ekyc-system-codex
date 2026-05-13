@@ -1,4 +1,4 @@
-import 'package:laligence_ekyc_sdk/laligence_ekyc_sdk.dart';
+import 'package:laligence_ekyc/laligence_ekyc.dart';
 import 'package:test/test.dart';
 
 void main() {

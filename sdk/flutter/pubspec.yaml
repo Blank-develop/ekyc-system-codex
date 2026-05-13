@@ -1,7 +1,15 @@
-name: laligence_ekyc_sdk
-description: Flutter SDK for the LALIGENCE eKYC backend API.
-version: 0.1.0
-publish_to: none
+name: laligence_ekyc
+description: Dart and Flutter SDK for the LALIGENCE eKYC backend API, including passport proofing, face enrollment, and face login.
+version: 0.3.0
+homepage: https://github.com/Blank-develop/ekyc-system-codex
+repository: https://github.com/Blank-develop/ekyc-system-codex
+issue_tracker: https://github.com/Blank-develop/ekyc-system-codex/issues
+topics:
+  - ekyc
+  - identity
+  - liveness
+  - flutter
+  - biometrics
 
 environment:
   sdk: ^3.9.0
