@@ -44,16 +44,56 @@ const emptyMetric: LivenessMetric = {
   mouthRatio: 0
 };
 
-const FACE_MESH_SOURCES = [
-  {
-    scriptUrl: "/vendor/mediapipe/face_mesh/face_mesh.js",
-    assetBaseUrl: "/vendor/mediapipe/face_mesh"
-  },
-  {
-    scriptUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js",
-    assetBaseUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"
-  }
-];
+const LOCAL_FACE_MESH_SOURCE = {
+  name: "local",
+  scriptUrl: "/vendor/mediapipe/face_mesh/face_mesh.js",
+  assetBaseUrl: "/vendor/mediapipe/face_mesh"
+};
+
+const CDN_FACE_MESH_SOURCE = {
+  name: "jsdelivr",
+  scriptUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js",
+  assetBaseUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"
+};
+
+const FACE_MESH_SOURCES = [LOCAL_FACE_MESH_SOURCE, CDN_FACE_MESH_SOURCE];
+const FACE_MESH_SCRIPT_TIMEOUT_MS = 8000;
+const FACE_MESH_INITIALIZE_TIMEOUT_MS = 12000;
+type FaceMeshSource = typeof FACE_MESH_SOURCES[number];
+
+function preferredFaceMeshSources() {
+  const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  return isLocalhost ? FACE_MESH_SOURCES : [CDN_FACE_MESH_SOURCE, LOCAL_FACE_MESH_SOURCE];
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then((value) => resolve(value))
+      .catch((error) => reject(error))
+      .finally(() => window.clearTimeout(timeout));
+  });
+}
+
+const FACE_MESH_FALLBACK_HELP = "Try refreshing once, then check that this device can access cdn.jsdelivr.net.";
+
+function faceMeshLoadMessage(error: unknown) {
+  const detail = error instanceof Error ? error.message : "unknown error";
+  return `Active liveness model could not be loaded. ${FACE_MESH_FALLBACK_HELP} (${detail})`;
+}
+
+function describeError(error: unknown) {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+function removeFaceMeshScript(source: FaceMeshSource) {
+  document.querySelectorAll<HTMLScriptElement>("script[data-mediapipe-face-mesh]").forEach((script) => {
+    if (script.src === source.scriptUrl || script.getAttribute("src") === source.scriptUrl) {
+      script.remove();
+    }
+  });
+}
 
 export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLivenessCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -117,8 +157,9 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
       .then(() => {
         if (!disposed) setModelReady(true);
       })
-      .catch(() => {
-        if (!disposed) setError("Active liveness model could not be loaded.");
+      .catch((error) => {
+        console.warn("[active-liveness] FaceMesh load failed", error);
+        if (!disposed) setError(faceMeshLoadMessage(error));
       });
 
     return () => {
@@ -221,10 +262,10 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
 }
 
 async function createFaceMesh() {
-  let lastError: unknown;
-  for (const source of FACE_MESH_SOURCES) {
+  const sourceErrors: string[] = [];
+  for (const source of preferredFaceMeshSources()) {
     try {
-      await loadFaceMeshScript(source.scriptUrl);
+      await loadFaceMeshScript(source);
       if (!window.FaceMesh) throw new Error("FaceMesh global missing");
       const faceMesh = new window.FaceMesh({
         locateFile: (file) => `${source.assetBaseUrl}/${file}`
@@ -236,35 +277,39 @@ async function createFaceMesh() {
         minDetectionConfidence: 0.65,
         minTrackingConfidence: 0.65
       });
-      await faceMesh.initialize();
+      await withTimeout(faceMesh.initialize(), FACE_MESH_INITIALIZE_TIMEOUT_MS, `${source.name} FaceMesh initialize timed out`);
       return faceMesh;
     } catch (error) {
-      lastError = error;
+      sourceErrors.push(`${source.name}: ${describeError(error)}`);
+      console.warn("[active-liveness] FaceMesh source failed", source.name, error);
       delete window.FaceMesh;
-      document.querySelector<HTMLScriptElement>(`script[data-mediapipe-face-mesh][src="${source.scriptUrl}"]`)?.remove();
+      removeFaceMeshScript(source);
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("FaceMesh failed to initialize");
+  throw new Error(sourceErrors.join(" | ") || "FaceMesh failed to initialize");
 }
 
-function loadFaceMeshScript(scriptUrl: string) {
+function loadFaceMeshScript(source: FaceMeshSource) {
   if (window.FaceMesh) return Promise.resolve();
-  const existing = document.querySelector<HTMLScriptElement>(`script[data-mediapipe-face-mesh][src="${scriptUrl}"]`);
+  const existing = Array.from(document.querySelectorAll<HTMLScriptElement>("script[data-mediapipe-face-mesh]")).find(
+    (script) => script.src === source.scriptUrl || script.getAttribute("src") === source.scriptUrl
+  );
   if (existing) {
-    return new Promise<void>((resolve, reject) => {
+    return withTimeout(new Promise<void>((resolve, reject) => {
       existing.addEventListener("load", () => resolve(), { once: true });
       existing.addEventListener("error", () => reject(new Error("FaceMesh script failed")), { once: true });
-    });
+    }), FACE_MESH_SCRIPT_TIMEOUT_MS, `${source.name} FaceMesh script load timed out`);
   }
-  return new Promise<void>((resolve, reject) => {
+  return withTimeout(new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = scriptUrl;
+    script.src = source.scriptUrl;
     script.async = true;
     script.dataset.mediapipeFaceMesh = "true";
+    script.dataset.mediapipeFaceMeshSource = source.name;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("FaceMesh script failed"));
+    script.onerror = () => reject(new Error(`${source.name} FaceMesh script failed`));
     document.head.appendChild(script);
-  });
+  }), FACE_MESH_SCRIPT_TIMEOUT_MS, `${source.name} FaceMesh script load timed out`);
 }
 
 function readLivenessMetric(landmarks: NormalizedLandmarkList): LivenessMetric {

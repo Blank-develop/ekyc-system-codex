@@ -176,6 +176,34 @@ Evaluate the real document upload API route:
 PYTHONPATH=backend .venv/bin/python backend/scripts/evaluate_document_upload.py --dataset test_dataset --only-folder genuine_midv2020_passport
 ```
 
+## Selfie Spoof Test Dataset
+
+Install a small public selfie PAD sample set with screen-replay images and print/paper spoof frames:
+
+```bash
+.venv/bin/python scripts/install_selfie_spoof_dataset.py --max-screen-images 5 --max-paper-videos 1 --frames-per-paper-video 2
+```
+
+Install a larger 1000-image spoof benchmark by extracting still frames from the public AxonData video set:
+
+```bash
+.venv/bin/python scripts/install_selfie_spoof_dataset.py --max-screen-images 0 --max-paper-videos 0 --target-axon-large-images 1000 --axon-large-frames-per-video 10
+```
+
+Add your own real live selfies so false rejects can be measured:
+
+```bash
+.venv/bin/python scripts/install_selfie_spoof_dataset.py --skip-public --live-source /path/to/live-selfies
+```
+
+Evaluate the current passive liveness pipeline:
+
+```bash
+PYTHONPATH=backend .venv/bin/python backend/scripts/evaluate_selfie_spoof.py --dataset test_dataset/selfie_spoof
+```
+
+The public installer uses Hugging Face datasets `AxonData/Display_replay_attacks`, `AxonData/print-cardboard-mask-face-spoofing`, and `AxonData/face-anti-spoofing-dataset`. The print/paper and larger AxonData sources are video-based, so the installer extracts still frames for the selfie route.
+
 ## Public Demo Deployment
 
 This project now includes the deployment baseline for a public tester demo:

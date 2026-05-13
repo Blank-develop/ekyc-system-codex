@@ -142,3 +142,8 @@ Before handing off changes:
 - MIDV-2020 is license-gated and distributed by University of La Rochelle over sFTP after the user accepts the form. Use `scripts/install_test_dataset.py --prepare-midv2020 /path/to/MIDV-2020 --max-per-class 50` after the dataset is extracted locally.
 - Use `backend/scripts/evaluate_document_fraud.py --dataset test_dataset` to report accuracy, false reject rate, false accept rate, precision, recall, per-folder results, and mistakes.
 - Use `backend/scripts/evaluate_document_upload.py --dataset test_dataset --only-folder genuine_midv2020_passport` to test the actual FastAPI document upload route.
+- Selfie PAD benchmark data lives under `test_dataset/selfie_spoof/`.
+- Use `.venv/bin/python scripts/install_selfie_spoof_dataset.py --max-screen-images 5 --max-paper-videos 1 --frames-per-paper-video 2` to install a small public screen-replay plus print/paper spoof sample.
+- Use `.venv/bin/python scripts/install_selfie_spoof_dataset.py --max-screen-images 0 --max-paper-videos 0 --target-axon-large-images 1000 --axon-large-frames-per-video 10` to install a larger 1000-image spoof benchmark from AxonData videos.
+- Use `.venv/bin/python scripts/install_selfie_spoof_dataset.py --skip-public --live-source /path/to/live-selfies` to add genuine samples captured on real devices.
+- Use `PYTHONPATH=backend .venv/bin/python backend/scripts/evaluate_selfie_spoof.py --dataset test_dataset/selfie_spoof` to report passive anti-spoof accuracy, false accept rate, false reject rate, and per-folder mistakes.
