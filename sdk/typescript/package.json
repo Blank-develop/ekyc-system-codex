@@ -1,0 +1,20 @@
+{
+  "name": "@laligence/ekyc-sdk",
+  "version": "0.1.0",
+  "description": "Mobile-ready TypeScript SDK for the LALIGENCE eKYC backend.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -130,6 +130,16 @@ curl -X DELETE http://localhost:8000/api/profiles
 
 These profile admin endpoints are for local demo/testing only. Protect or remove them before a real public deployment.
 
+## Mobile SDK
+
+This repo includes a TypeScript mobile SDK at `sdk/typescript`. It wraps the eKYC backend API for React Native, Expo, or any mobile JavaScript client:
+
+```bash
+npm --workspace @laligence/ekyc-sdk run build
+```
+
+The SDK exposes `createVerification`, `uploadDocument`, `completeChallenge`, `analyzeSelfie`, `enrollFace`, `faceLogin`, and testing-only profile admin helpers. See `docs/mobile-sdk.md` for a full mobile flow and React Native examples.
+
 ## Document Fraud Test Dataset
 
 Local test data lives in `test_dataset/`. Seed it from the existing local labeled examples:
