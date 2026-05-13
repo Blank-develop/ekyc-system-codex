@@ -132,13 +132,17 @@ These profile admin endpoints are for local demo/testing only. Protect or remove
 
 ## Mobile SDK
 
-This repo includes a TypeScript mobile SDK at `sdk/typescript`. It wraps the eKYC backend API for React Native, Expo, or any mobile JavaScript client:
+This repo includes mobile SDKs that wrap the eKYC backend API.
 
 ```bash
 npm --workspace @laligence/ekyc-sdk run build
+cd sdk/flutter && dart pub get && dart analyze && dart test
 ```
 
-The SDK exposes `createVerification`, `uploadDocument`, `completeChallenge`, `analyzeSelfie`, `enrollFace`, `faceLogin`, and testing-only profile admin helpers. See `docs/mobile-sdk.md` for a full mobile flow and React Native examples.
+- TypeScript SDK: `sdk/typescript` for React Native, Expo, or any mobile JavaScript client.
+- Flutter SDK: `sdk/flutter` for Dart/Flutter apps.
+
+Both SDKs expose `createVerification`, `uploadDocument`, `completeChallenge`, `analyzeSelfie`, `enrollFace`, `faceLogin`, and testing-only profile admin helpers. See `docs/mobile-sdk.md` and `docs/flutter-sdk.md` for mobile examples.
 
 ## Document Fraud Test Dataset
 

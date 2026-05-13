@@ -23,6 +23,7 @@ Build a web-first, mobile-ready eKYC system for passport identity proofing align
 - `Dockerfile`: deployable backend container with Tesseract and local face model installation.
 - `render.yaml`: public-demo Render Blueprint for the API and static frontend.
 - `sdk/typescript`: mobile-ready TypeScript SDK for React Native, Expo, and other mobile clients calling the eKYC backend.
+- `sdk/flutter`: Flutter/Dart SDK for mobile apps calling the eKYC backend.
 - Profile storage uses SQLAlchemy: PostgreSQL when `DATABASE_URL` is set, SQLite fallback at `backend/data/laligence_profiles.sqlite3` for local development.
 
 ## Design System
@@ -97,7 +98,7 @@ Brand adaptation:
 - Public deployment must keep CORS origin allowlists explicit through `LALIGENCE_CORS_ORIGINS`; do not use wildcard CORS for the hosted demo.
 - Uploaded images are capped by `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` and restricted by `LALIGENCE_ALLOWED_UPLOAD_CONTENT_TYPES`.
 - The simple per-IP rate limit is controlled by `LALIGENCE_MAX_REQUESTS_PER_MINUTE`; set it to `0` only for trusted internal testing.
-- Mobile SDK clients should call the same backend API contract rather than duplicating fraud, OCR, face matching, or PAD logic on-device. Keep mobile camera capture and UI in the mobile app, then send image evidence to the backend with `@laligence/ekyc-sdk`.
+- Mobile SDK clients should call the same backend API contract rather than duplicating fraud, OCR, face matching, or PAD logic on-device. Keep mobile camera capture and UI in the mobile app, then send image evidence to the backend with `@laligence/ekyc-sdk` or the Flutter `laligence_ekyc_sdk` package.
 
 ## Frontend Rules
 

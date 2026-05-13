@@ -19,3 +19,6 @@ test_dataset/
 frontend/dist/
 .sixth/
 *.tsbuildinfo
+.dart_tool/
+sdk/flutter/build/
+sdk/flutter/pubspec.lock
