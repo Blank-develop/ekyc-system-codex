@@ -14,6 +14,8 @@ type FaceMeshInstance = {
 declare global {
   interface Window {
     FaceMesh?: new (config?: FaceMeshConfig) => FaceMeshInstance;
+    createMediapipeSolutionsPackedAssets?: unknown;
+    createMediapipeSolutionsWasm?: unknown;
   }
 }
 
@@ -58,8 +60,8 @@ const CDN_FACE_MESH_SOURCE = {
 
 const FACE_MESH_SOURCES = [LOCAL_FACE_MESH_SOURCE, CDN_FACE_MESH_SOURCE];
 const FACE_MESH_SCRIPT_TIMEOUT_MS = 8000;
-const FACE_MESH_INITIALIZE_TIMEOUT_MS = 12000;
 type FaceMeshSource = typeof FACE_MESH_SOURCES[number];
+let sharedFaceMeshPromise: Promise<FaceMeshInstance> | null = null;
 
 function preferredFaceMeshSources() {
   const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
@@ -76,7 +78,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   });
 }
 
-const FACE_MESH_FALLBACK_HELP = "Try refreshing once, then check that this device can access cdn.jsdelivr.net.";
+const FACE_MESH_FALLBACK_HELP = "Hard refresh the page once; if it still fails, check that this device can load the local MediaPipe assets or cdn.jsdelivr.net.";
 
 function faceMeshLoadMessage(error: unknown) {
   const detail = error instanceof Error ? error.message : "unknown error";
@@ -95,6 +97,13 @@ function removeFaceMeshScript(source: FaceMeshSource) {
   });
 }
 
+function resetFaceMeshGlobals(source: FaceMeshSource) {
+  delete window.FaceMesh;
+  delete window.createMediapipeSolutionsPackedAssets;
+  delete window.createMediapipeSolutionsWasm;
+  removeFaceMeshScript(source);
+}
+
 export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLivenessCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -102,6 +111,7 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   const rafRef = useRef<number | null>(null);
   const processingRef = useRef(false);
   const completionLockRef = useRef<string | null>(null);
+  const modelFailedRef = useRef(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [modelReady, setModelReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,19 +120,33 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   const currentChallenge = useMemo(() => challenges.find((challenge) => !challenge.passed), [challenges]);
 
   const startCamera = async () => {
+    let stream: MediaStream | null = null;
     try {
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       });
+      const faceMesh = await getSharedFaceMesh();
+      modelFailedRef.current = false;
+      faceMesh.onResults((results: Results) => {
+        const landmarks = results.multiFaceLandmarks?.[0];
+        const nextMetric = landmarks ? readLivenessMetric(landmarks) : emptyMetric;
+        setMetric(nextMetric);
+      });
+      faceMeshRef.current = faceMesh;
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+      setModelReady(true);
       setCameraReady(true);
-    } catch {
-      setError("Camera permission is required for active liveness.");
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop());
+      const message = error instanceof DOMException && error.name === "NotAllowedError"
+        ? "Camera permission is required for active liveness."
+        : faceMeshLoadMessage(error);
+      setError(message);
       setCameraReady(false);
     }
   };
@@ -136,38 +160,10 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
     streamRef.current = null;
     setCameraReady(false);
     setMetric(emptyMetric);
+    modelFailedRef.current = false;
   };
 
-  useEffect(() => {
-    let disposed = false;
-
-    createFaceMesh()
-      .then((faceMesh) => {
-        if (disposed) {
-          faceMesh.close();
-          return;
-        }
-        faceMesh.onResults((results: Results) => {
-          const landmarks = results.multiFaceLandmarks?.[0];
-          const nextMetric = landmarks ? readLivenessMetric(landmarks) : emptyMetric;
-          setMetric(nextMetric);
-        });
-        faceMeshRef.current = faceMesh;
-      })
-      .then(() => {
-        if (!disposed) setModelReady(true);
-      })
-      .catch((error) => {
-        console.warn("[active-liveness] FaceMesh load failed", error);
-        if (!disposed) setError(faceMeshLoadMessage(error));
-      });
-
-    return () => {
-      disposed = true;
-      stopCamera();
-      faceMeshRef.current?.close();
-    };
-  }, []);
+  useEffect(() => () => stopCamera(), []);
 
   useEffect(() => {
     completionLockRef.current = null;
@@ -179,10 +175,17 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
     const processFrame = async () => {
       const video = videoRef.current;
       const faceMesh = faceMeshRef.current;
-      if (video && faceMesh && video.readyState >= 2 && !processingRef.current) {
+      if (video && faceMesh && video.readyState >= 2 && !processingRef.current && !modelFailedRef.current) {
         processingRef.current = true;
         try {
           await faceMesh.send({ image: video });
+        } catch (error) {
+          modelFailedRef.current = true;
+          resetSharedFaceMesh(faceMesh);
+          faceMeshRef.current = null;
+          console.warn("[active-liveness] FaceMesh frame failed", error);
+          setError(faceMeshLoadMessage(error));
+          setModelReady(false);
         } finally {
           processingRef.current = false;
         }
@@ -261,6 +264,22 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   );
 }
 
+function getSharedFaceMesh() {
+  if (!sharedFaceMeshPromise) {
+    sharedFaceMeshPromise = createFaceMesh().catch((error) => {
+      sharedFaceMeshPromise = null;
+      throw error;
+    });
+  }
+  return sharedFaceMeshPromise;
+}
+
+function resetSharedFaceMesh(faceMesh?: FaceMeshInstance | null) {
+  sharedFaceMeshPromise = null;
+  faceMesh?.close().catch(() => undefined);
+  FACE_MESH_SOURCES.forEach((source) => resetFaceMeshGlobals(source));
+}
+
 async function createFaceMesh() {
   const sourceErrors: string[] = [];
   for (const source of preferredFaceMeshSources()) {
@@ -277,13 +296,11 @@ async function createFaceMesh() {
         minDetectionConfidence: 0.65,
         minTrackingConfidence: 0.65
       });
-      await withTimeout(faceMesh.initialize(), FACE_MESH_INITIALIZE_TIMEOUT_MS, `${source.name} FaceMesh initialize timed out`);
       return faceMesh;
     } catch (error) {
       sourceErrors.push(`${source.name}: ${describeError(error)}`);
       console.warn("[active-liveness] FaceMesh source failed", source.name, error);
-      delete window.FaceMesh;
-      removeFaceMeshScript(source);
+      resetFaceMeshGlobals(source);
     }
   }
   throw new Error(sourceErrors.join(" | ") || "FaceMesh failed to initialize");
@@ -350,8 +367,8 @@ function matchesChallenge(challengeId: string, metric: LivenessMetric) {
 }
 
 function detectionInstruction(challengeId: string, modelReady: boolean, cameraReady: boolean) {
-  if (!modelReady) return "Loading face model";
   if (!cameraReady) return "Open the camera to begin";
+  if (!modelReady) return "Loading face model";
   if (challengeId === "blink") return "Blink once to auto-pass";
   if (challengeId === "open_mouth") return "Open your mouth to auto-pass";
   if (challengeId === "turn_left") return "Turn your head left to auto-pass";
