@@ -76,10 +76,23 @@ async def upload_document(
     file: UploadFile = File(...),
     ocr_text: str | None = Form(default=None),
 ) -> VerificationResult:
+    started_at = time.perf_counter()
     _get_session(session_id)
     content = await _read_upload(file)
+    analysis_started_at = time.perf_counter()
     analysis = await run_in_threadpool(analyzer.analyze, content, file.filename or "passport-upload", ocr_text)
+    analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
+    face_started_at = time.perf_counter()
     face_result = await run_in_threadpool(face_recognizer.extract, content, "document")
+    face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
+    analysis.checks.update(
+        {
+            "document_upload_kb": round(len(content) / 1024, 1),
+            "document_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "document_analysis_ms": analysis_elapsed_ms,
+            "document_face_extract_ms": face_elapsed_ms,
+        }
+    )
     analysis.checks.update(face_result.checks)
     if face_result.embedding is not None:
         store.set_document_face_embedding(session_id, face_result.embedding)
@@ -102,16 +115,29 @@ async def analyze_selfie(
     session_id: UUID,
     file: UploadFile = File(...),
 ) -> VerificationResult:
+    started_at = time.perf_counter()
     _get_session(session_id)
     content = await _read_upload(file)
     reference_embedding = store.get_document_face_embedding(session_id)
+    analysis_started_at = time.perf_counter()
     analysis = await run_in_threadpool(
         selfie_analyzer.analyze,
         content,
         file.filename or "selfie-capture.jpg",
         reference_embedding,
     )
+    analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
+    face_started_at = time.perf_counter()
     selfie_face = await run_in_threadpool(face_recognizer.extract, content, "selfie")
+    face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
+    analysis.selfie_checks.update(
+        {
+            "selfie_upload_kb": round(len(content) / 1024, 1),
+            "selfie_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "selfie_analysis_ms": analysis_elapsed_ms,
+            "selfie_face_extract_ms": face_elapsed_ms,
+        }
+    )
     store.set_selfie_face_embedding(session_id, selfie_face.embedding if analysis.passive_liveness_passed else None)
     return store.set_selfie(session_id, analysis)
 

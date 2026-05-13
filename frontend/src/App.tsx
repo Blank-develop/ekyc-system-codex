@@ -21,6 +21,7 @@ import { ActiveLivenessCapture } from "./components/ActiveLivenessCapture";
 import { CameraCapture } from "./components/CameraCapture";
 import { HandGestureCapture } from "./components/HandGestureCapture";
 import { api, Challenge, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
+import { optimizeImageForUpload } from "./lib/image";
 
 type StepKey = "document" | "liveness" | "gesture" | "selfie" | "result";
 type Screen = "intro" | "verify" | "face-login";
@@ -210,7 +211,17 @@ export function App() {
       event.target.value = "";
       return;
     }
-    uploadAndAnalyzeDocument(() => api.uploadDocument(sessionId, file), "Passport analyzed").finally(() => {
+    uploadAndAnalyzeDocument(
+      async () => api.uploadDocument(
+        sessionId,
+        await optimizeImageForUpload(file, {
+          maxWidth: 1600,
+          quality: 0.88,
+          filename: file.name.replace(/\.[^.]+$/, "") + "-optimized.jpg"
+        })
+      ),
+      "Passport analyzed"
+    ).finally(() => {
       event.target.value = "";
     });
   };
@@ -220,7 +231,17 @@ export function App() {
       setError("Verification session is still connecting. Please wait a moment and capture again.");
       return;
     }
-    uploadAndAnalyzeDocument(() => api.uploadDocument(sessionId, blob), "Passport capture analyzed");
+    uploadAndAnalyzeDocument(
+      async () => api.uploadDocument(
+        sessionId,
+        await optimizeImageForUpload(blob, {
+          maxWidth: 1600,
+          quality: 0.88,
+          filename: "passport-capture-optimized.jpg"
+        })
+      ),
+      "Passport capture analyzed"
+    );
   };
 
   const completeChallenge = (challenge: Challenge, next?: StepKey) => {
@@ -235,7 +256,12 @@ export function App() {
       setSelfieNotice(null);
       setBusy(true);
       setError(null);
-      const nextResult = await api.analyzeSelfie(sessionId, blob);
+      const optimizedBlob = await optimizeImageForUpload(blob, {
+        maxWidth: 900,
+        quality: 0.84,
+        filename: "selfie-capture-optimized.jpg"
+      });
+      const nextResult = await api.analyzeSelfie(sessionId, optimizedBlob);
       setResult(nextResult);
       if (nextResult.biometric.passive_liveness_passed && nextResult.biometric.face_match_score >= FACE_MATCH_PASS_THRESHOLD) {
         setStatusMessage("Selfie and passive liveness analyzed");
@@ -776,7 +802,14 @@ function DocumentStep({
           <input id="passport-upload" type="file" accept="image/*" onChange={onUpload} disabled={disabled} />
         </label>
       </div>
-      <CameraCapture label="Passport camera capture" overlay="document" onCapture={onCapture} disabled={disabled} />
+      <CameraCapture
+        label="Passport camera capture"
+        overlay="document"
+        onCapture={onCapture}
+        disabled={disabled}
+        maxCaptureWidth={1600}
+        jpegQuality={0.88}
+      />
     </div>
   );
 }
@@ -846,7 +879,13 @@ function SelfieStep({
           </div>
         )}
       </div>
-      <CameraCapture label="Selfie capture" overlay="face" onCapture={onCapture} />
+      <CameraCapture
+        label="Selfie capture"
+        overlay="face"
+        onCapture={onCapture}
+        maxCaptureWidth={900}
+        jpegQuality={0.84}
+      />
     </div>
   );
 }
