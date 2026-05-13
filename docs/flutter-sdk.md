@@ -8,7 +8,7 @@ From a Flutter app in a sibling folder:
 
 ```yaml
 dependencies:
-  laligence_ekyc: ^0.3.0
+  laligence_ekyc: ^0.3.1
 ```
 
 Then run:

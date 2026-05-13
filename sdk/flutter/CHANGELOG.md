@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Republishes the LALIGENCE eKYC backend SDK after `0.3.0` was already reserved on pub.dev.
+- Keeps the same typed backend client, upload helpers, response models, and expanded README documentation.
+
 ## 0.3.0
 
 - Replaces the package implementation with the LALIGENCE eKYC backend SDK.

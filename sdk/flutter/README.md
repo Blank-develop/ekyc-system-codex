@@ -55,7 +55,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  laligence_ekyc: ^0.3.0
+  laligence_ekyc: ^0.3.1
 ```
 
 Then run:
