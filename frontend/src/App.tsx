@@ -9,6 +9,10 @@ import {
   Fingerprint,
   Hand,
   KeyRound,
+  Landmark,
+  LockKeyhole,
+  ReceiptText,
+  Send,
   ShieldAlert,
   ShieldCheck,
   UserCheck,
@@ -24,7 +28,7 @@ import { api, Challenge, FaceLoginResponse, UserProfile, VerificationResult } fr
 import { optimizeImageForUpload } from "./lib/image";
 
 type StepKey = "document" | "liveness" | "gesture" | "selfie" | "result";
-type Screen = "intro" | "verify" | "face-login";
+type Screen = "intro" | "verify" | "face-login" | "payment";
 type DocumentNotice = {
   type: "success" | "failure";
   title: string;
@@ -361,6 +365,19 @@ export function App() {
         onStart={() => setScreen("verify")}
         onGenerateUserId={() => setUserId(createDemoUserId())}
         onFaceLogin={() => setScreen("face-login")}
+        onPayment={() => setScreen("payment")}
+      />
+    );
+  }
+
+  if (screen === "payment") {
+    return (
+      <PaymentScreen
+        onBack={() => setScreen("intro")}
+        onSignup={() => {
+          if (!normalizedUserId) setUserId(createDemoUserId());
+          setScreen("verify");
+        }}
       />
     );
   }
@@ -532,13 +549,15 @@ function IntroScreen({
   onUserIdChange,
   onGenerateUserId,
   onStart,
-  onFaceLogin
+  onFaceLogin,
+  onPayment
 }: {
   userId: string;
   onUserIdChange: (value: string) => void;
   onGenerateUserId: () => void;
   onStart: () => void;
   onFaceLogin: () => void;
+  onPayment: () => void;
 }) {
   const [showNewUserForm, setShowNewUserForm] = useState(false);
   const canStart = userId.trim().length > 0;
@@ -619,13 +638,17 @@ function IntroScreen({
             </div>
           ) : (
             <div className="intro-actions">
-              <button className="primary-button intro-start" type="button" onClick={onFaceLogin}>
-                <KeyRound size={18} />
-                Face login
+              <button className="primary-button intro-start" type="button" onClick={onPayment}>
+                <Send size={18} />
+                Face Pay transfer
               </button>
               <button className="secondary-button intro-start" type="button" onClick={openNewUserForm}>
                 <UserPlus size={18} />
-                New user verification
+                New user signup
+              </button>
+              <button className="text-action-button" type="button" onClick={onFaceLogin}>
+                <KeyRound size={16} />
+                Face login only
               </button>
             </div>
           )}
@@ -716,6 +739,142 @@ function FaceLoginScreen({
           maxCaptureWidth={720}
           jpegQuality={0.84}
         />
+      </section>
+    </main>
+  );
+}
+
+function PaymentScreen({ onBack, onSignup }: { onBack: () => void; onSignup: () => void }) {
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("LAK");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [authResult, setAuthResult] = useState<FaceLoginResponse | null>(null);
+  const [transferId, setTransferId] = useState<string | null>(null);
+  const numericAmount = Number(amount);
+  const canAuthorize = recipient.trim().length >= 2 && Number.isFinite(numericAmount) && numericAmount > 0 && !busy;
+  const approved = authResult?.decision === "passed" && Boolean(transferId);
+
+  const authorizeTransfer = async (blob: Blob) => {
+    if (!canAuthorize) return;
+    try {
+      setBusy(true);
+      setAuthResult(null);
+      setTransferId(null);
+      const optimized = await optimizeImageForUpload(blob, {
+        maxWidth: 720,
+        quality: 0.84,
+        filename: "face-pay-login.jpg"
+      });
+      const response = await api.faceLogin(optimized);
+      setAuthResult(response);
+      if (response.decision === "passed") {
+        setTransferId(`LP-${Date.now().toString(36).toUpperCase()}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="payment-shell">
+      <section className="payment-panel" aria-labelledby="payment-title">
+        <button className="secondary-button back-button" type="button" onClick={onBack}>
+          <ArrowLeft size={18} />
+          Back
+        </button>
+        <div className="payment-copy">
+          <div className="payment-brand">
+            <img src={logoUrl} alt="LALIGENCE" />
+            <span>Face Pay</span>
+          </div>
+          <p className="eyebrow">Bank transfer authorization</p>
+          <h1 id="payment-title">Transfer with Face ID</h1>
+          <p className="payment-note">Demo mode: no real money moves. Each transfer requires an enrolled live Face ID.</p>
+
+          <div className="payment-card" aria-label="Transfer details">
+            <label>
+              <span>Recipient</span>
+              <input value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="Account name or number" />
+            </label>
+            <div className="payment-amount-grid">
+              <label>
+                <span>Amount</span>
+                <input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" />
+              </label>
+              <label>
+                <span>Currency</span>
+                <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+                  <option>LAK</option>
+                  <option>USD</option>
+                  <option>THB</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Note</span>
+              <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" />
+            </label>
+          </div>
+
+          <div className="payment-security-row">
+            <div><LockKeyhole size={18} /><span>Face ID required</span></div>
+            <div><Landmark size={18} /><span>Verified profile only</span></div>
+            <div><ReceiptText size={18} /><span>Result receipt</span></div>
+          </div>
+
+          {busy && (
+            <div className="selfie-loading" role="status" aria-live="polite">
+              <span />
+              Authorizing transfer
+            </div>
+          )}
+
+          {authResult && (
+            <div className={`document-notice document-notice-${approved ? "success" : "failure"}`} role="status">
+              {approved ? <ShieldCheck size={20} /> : <ShieldAlert size={20} />}
+              <div>
+                <strong>{approved ? "Transfer authorized" : "Transfer blocked"}</strong>
+                <p>
+                  {approved
+                    ? `${currency} ${numericAmount.toLocaleString()} to ${recipient.trim()} was approved by Face ID.`
+                    : "Face ID authorization did not pass. Ask the user to complete signup or try again."}
+                </p>
+                <div className="document-notice-codes">
+                  {(authResult.reason_codes.length ? authResult.reason_codes : [transferId ?? "FACE_PAY_APPROVED"]).slice(0, 4).map((code) => (
+                    <code key={code}>{code}</code>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {authResult?.profile && <ProfileSummary profile={authResult.profile} />}
+
+          <button className="text-action-button" type="button" onClick={onSignup}>
+            <UserPlus size={16} />
+            New user signup
+          </button>
+        </div>
+
+        <div className="payment-auth">
+          <div className="payment-auth-header">
+            <Send size={20} />
+            <div>
+              <strong>{canAuthorize ? "Scan Face ID to transfer" : "Enter transfer details"}</strong>
+              <span>{canAuthorize ? "Live face authorization is required." : "Recipient and amount are required first."}</span>
+            </div>
+          </div>
+          <CameraCapture
+            label="Face Pay authorization"
+            overlay="face"
+            onCapture={authorizeTransfer}
+            disabled={!canAuthorize}
+            maxCaptureWidth={720}
+            jpegQuality={0.84}
+          />
+        </div>
       </section>
     </main>
   );
