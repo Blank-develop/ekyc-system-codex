@@ -224,12 +224,46 @@ This project now includes the deployment baseline for a public tester demo:
 
 - `Dockerfile`: containerized FastAPI backend with Tesseract and local model install.
 - `render.yaml`: Render Blueprint for a Docker API service and static Vite frontend.
+- `deploy/digitalocean/`: Docker Compose deployment for a Singapore Droplet with FastAPI, PostgreSQL, and Caddy HTTPS.
+- `vercel.json`: Vercel frontend deployment config for the Vite app.
 - `backend/.env.example`: backend production settings.
 - `frontend/.env.example`: deployed API URL setting.
 - `.dockerignore`: keeps local datasets, virtualenvs, and build output out of the container context.
 - SQLAlchemy profile storage: PostgreSQL on Render through `DATABASE_URL`, SQLite fallback locally.
 
 Public demo safety: use sample or redacted documents only. The backend does not persist raw uploads, but sensitive identity images still pass through the server process during analysis.
+
+### Recommended Deployment: DigitalOcean + Vercel
+
+For a faster company demo in Laos/Southeast Asia, prefer:
+
+- Backend: DigitalOcean Droplet in Singapore.
+- Backend HTTPS: Caddy reverse proxy.
+- Database: PostgreSQL in Docker Compose on the Droplet for demos, or DigitalOcean Managed PostgreSQL for stronger production durability.
+- Frontend: Vercel static Vite deployment.
+
+See the full guide:
+
+```bash
+deploy/digitalocean/README.md
+```
+
+Quick backend commands on the Droplet:
+
+```bash
+git clone https://github.com/Blank-develop/ekyc-system-codex.git
+cd ekyc-system-codex
+cp deploy/digitalocean/.env.example deploy/digitalocean/.env
+# edit API_DOMAIN, LALIGENCE_CORS_ORIGINS, and POSTGRES_PASSWORD
+docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml up -d --build
+curl -i https://api.your-domain.com/health
+```
+
+Vercel must set:
+
+```bash
+VITE_API_BASE_URL=https://api.your-domain.com
+```
 
 ### Deploy On Render
 

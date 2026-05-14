@@ -22,6 +22,8 @@ Build a web-first, mobile-ready eKYC system for passport identity proofing align
 - `frontend/src/assets/logo.png`: LALIGENCE logo and brand anchor.
 - `Dockerfile`: deployable backend container with Tesseract and local face model installation.
 - `render.yaml`: public-demo Render Blueprint for the API and static frontend.
+- `deploy/digitalocean`: preferred faster demo deployment for DigitalOcean Singapore Droplet, PostgreSQL, and Caddy HTTPS.
+- `vercel.json`: Vercel frontend deployment config.
 - `sdk/typescript`: mobile-ready TypeScript SDK for React Native, Expo, and other mobile clients calling the eKYC backend.
 - `sdk/flutter`: Flutter/Dart SDK for mobile apps calling the eKYC backend, published as `laligence_ekyc`.
 - Profile storage uses SQLAlchemy: PostgreSQL when `DATABASE_URL` is set, SQLite fallback at `backend/data/laligence_profiles.sqlite3` for local development.
