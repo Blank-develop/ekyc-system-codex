@@ -1,0 +1,55 @@
+name: Deploy to Hugging Face Space
+
+# Triggers a factory rebuild of the Hugging Face Space whenever app code lands
+# on main. The Space's Dockerfile clones this repo's `main` at build time, so a
+# factory rebuild re-pulls the latest code and redeploys the demo.
+#
+# Setup (one time): add a repo secret named HF_TOKEN containing a Hugging Face
+# access token with WRITE access to the Space
+# (GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - "deploy/huggingface/**"
+      - ".github/workflows/deploy-hf-space.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: hf-space-deploy
+  cancel-in-progress: true
+
+jobs:
+  rebuild-space:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install huggingface_hub
+        run: pip install "huggingface_hub>=0.25"
+
+      - name: Trigger Space factory rebuild
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_ID: banku1212/kyron-ekyc
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          space_id = os.environ["SPACE_ID"]
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.restart_space(space_id, factory_reboot=True)
+          print(f"Triggered factory rebuild of Space: {space_id}")
+          PY
