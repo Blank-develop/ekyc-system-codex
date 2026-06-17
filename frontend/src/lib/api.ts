@@ -1,5 +1,6 @@
 export type Decision = "pending" | "passed" | "rejected";
 export type ChallengeType = "active_liveness" | "hand_gesture";
+export type DocumentType = "passport" | "lao_id_card";
 
 export interface Challenge {
   id: string;
@@ -31,8 +32,10 @@ export interface VerificationResult {
     recapture_risk_score: number;
     tamper_risk_score: number;
     ocr: {
-      document_type: "passport";
+      document_type: DocumentType;
       full_name: string | null;
+      document_number: string | null;
+      id_number: string | null;
       passport_number: string | null;
       nationality: string | null;
       date_of_birth: string | null;
@@ -49,6 +52,8 @@ export interface VerificationResult {
   biometric: {
     active_liveness_passed: boolean;
     hand_challenge_passed: boolean;
+    active_liveness_checks: Record<string, string | number | boolean | null>;
+    active_liveness_signals: FraudSignal[];
     passive_liveness_passed: boolean;
     face_match_score: number;
     passive_liveness_risk: number;
@@ -159,9 +164,10 @@ export const api = {
       retries: 2
     }),
 
-  uploadDocument: (sessionId: string, file: File | Blob) => {
+  uploadDocument: (sessionId: string, file: File | Blob, documentType: DocumentType = "passport") => {
     const body = new FormData();
-    body.append("file", file, file instanceof File ? file.name : "passport-capture.jpg");
+    body.append("document_type", documentType);
+    body.append("file", file, file instanceof File ? file.name : `${documentType}-capture.jpg`);
     return request<VerificationResult>(`/api/verifications/${sessionId}/document`, {
       method: "POST",
       body,
@@ -178,9 +184,33 @@ export const api = {
       retries: 2
     }),
 
-  analyzeSelfie: (sessionId: string, file: File | Blob) => {
+  verifyActiveLiveness: (sessionId: string, challengeId: string, file: File | Blob | Blob[]) => {
     const body = new FormData();
-    body.append("file", file, file instanceof File ? file.name : "selfie-capture.jpg");
+    body.append("challenge_id", challengeId);
+    if (Array.isArray(file)) {
+      file.forEach((frame, index) => {
+        body.append("frames", frame, frame instanceof File ? frame.name : `${challengeId}-active-liveness-${index + 1}.jpg`);
+      });
+    } else {
+      body.append("file", file, file instanceof File ? file.name : `${challengeId}-active-liveness.jpg`);
+    }
+    return request<VerificationResult>(`/api/verifications/${sessionId}/active-liveness`, {
+      method: "POST",
+      body,
+      retries: 1,
+      timeoutMs: 90000
+    });
+  },
+
+  analyzeSelfie: (sessionId: string, file: File | Blob | Blob[]) => {
+    const body = new FormData();
+    if (Array.isArray(file)) {
+      file.forEach((frame, index) => {
+        body.append("frames", frame, frame instanceof File ? frame.name : `selfie-burst-${index + 1}.jpg`);
+      });
+    } else {
+      body.append("file", file, file instanceof File ? file.name : "selfie-capture.jpg");
+    }
     return request<VerificationResult>(`/api/verifications/${sessionId}/selfie`, {
       method: "POST",
       body,

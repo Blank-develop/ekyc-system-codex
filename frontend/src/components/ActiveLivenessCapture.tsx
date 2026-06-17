@@ -2,6 +2,7 @@ import type { FaceMeshConfig, InputMap, NormalizedLandmarkList, Options, Results
 import { Camera, CameraOff, Check, ScanFace } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Challenge } from "../lib/api";
+import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
 
 type FaceMeshInstance = {
   close: () => Promise<void>;
@@ -32,7 +33,7 @@ type LivenessMetric = {
 
 interface ActiveLivenessCaptureProps {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean) => void;
+  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean>;
 }
 
 const emptyMetric: LivenessMetric = {
@@ -79,6 +80,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 }
 
 const FACE_MESH_FALLBACK_HELP = "Hard refresh the page once; if it still fails, check that this device can load the local MediaPipe assets or cdn.jsdelivr.net.";
+const ACTIVE_LIVENESS_EVIDENCE_FRAME_COUNT = 3;
+const ACTIVE_LIVENESS_EVIDENCE_INTERVAL_MS = 140;
 
 function faceMeshLoadMessage(error: unknown) {
   const detail = error instanceof Error ? error.message : "unknown error";
@@ -114,6 +117,7 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   const modelFailedRef = useRef(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [modelReady, setModelReady] = useState(false);
+  const [verifyingChallengeId, setVerifyingChallengeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metric, setMetric] = useState<LivenessMetric>(emptyMetric);
 
@@ -123,6 +127,12 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
     let stream: MediaStream | null = null;
     try {
       setError(null);
+      const supportMessage = cameraUnavailableMessage();
+      if (supportMessage) {
+        setError(supportMessage);
+        setCameraReady(false);
+        return;
+      }
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
@@ -143,10 +153,7 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
       setCameraReady(true);
     } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
-      const message = error instanceof DOMException && error.name === "NotAllowedError"
-        ? "Camera permission is required for active liveness."
-        : faceMeshLoadMessage(error);
-      setError(message);
+      setError(cameraErrorMessage(error, faceMeshLoadMessage(error)));
       setCameraReady(false);
     }
   };
@@ -206,8 +213,31 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
 
     completionLockRef.current = currentChallenge.id;
     const remainingAfterThis = challenges.filter((challenge) => !challenge.passed && challenge.id !== currentChallenge.id).length;
-    window.setTimeout(() => {
-      onComplete(currentChallenge, remainingAfterThis === 0);
+    setVerifyingChallengeId(currentChallenge.id);
+    window.setTimeout(async () => {
+      const evidence = await captureEvidenceBurst(
+        videoRef.current,
+        ACTIVE_LIVENESS_EVIDENCE_FRAME_COUNT,
+        ACTIVE_LIVENESS_EVIDENCE_INTERVAL_MS
+      );
+      if (evidence.length === 0) {
+        completionLockRef.current = null;
+        setVerifyingChallengeId(null);
+        setError("Could not capture active liveness evidence. Keep your face visible and try again.");
+        return;
+      }
+      try {
+        const accepted = await onComplete(currentChallenge, remainingAfterThis === 0, evidence);
+        setVerifyingChallengeId(null);
+        if (!accepted) {
+          completionLockRef.current = null;
+          setError("Possible screen or replay detected. Use your real face directly in front of the camera.");
+        }
+      } catch (error) {
+        setVerifyingChallengeId(null);
+        completionLockRef.current = null;
+        setError(error instanceof Error ? error.message : "Active liveness could not be verified. Try again.");
+      }
     }, 350);
   }, [challenges, currentChallenge, metric, onComplete]);
 
@@ -238,6 +268,12 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
           {cameraReady ? "Stop camera" : "Open camera"}
         </button>
       </div>
+      {verifyingChallengeId && (
+        <div className="selfie-loading active-liveness-verifying" role="status" aria-live="polite">
+          <span />
+          Verifying live face
+        </div>
+      )}
 
       <div className="liveness-detection-list" aria-label="Active liveness challenge detection">
         {challenges.map((challenge) => {
@@ -253,7 +289,9 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
                 {challenge.passed
                   ? "Completed"
                   : isCurrent
-                    ? detectionInstruction(challenge.id, modelReady, cameraReady)
+                    ? verifyingChallengeId === challenge.id
+                      ? "Checking live burst for screen replay"
+                      : detectionInstruction(challenge.id, modelReady, cameraReady)
                     : "Waiting for previous action"}
               </small>
             </div>
@@ -262,6 +300,33 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
       </div>
     </div>
   );
+}
+
+function captureEvidenceFrame(video: HTMLVideoElement | null) {
+  if (!video || video.videoWidth === 0 || video.videoHeight === 0) return Promise.resolve<Blob | null>(null);
+  const maxWidth = 900;
+  const scale = Math.min(1, maxWidth / video.videoWidth);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  const context = canvas.getContext("2d");
+  if (!context) return Promise.resolve<Blob | null>(null);
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.84);
+  });
+}
+
+async function captureEvidenceBurst(video: HTMLVideoElement | null, count: number, intervalMs: number) {
+  const frames: Blob[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const frame = await captureEvidenceFrame(video);
+    if (frame) frames.push(frame);
+    if (index < count - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+    }
+  }
+  return frames;
 }
 
 function getSharedFaceMesh() {

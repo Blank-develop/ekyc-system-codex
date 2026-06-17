@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from io import BytesIO
+from statistics import mean, pstdev
 
-from PIL import Image, ImageFilter, ImageOps, ImageStat, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat, UnidentifiedImageError
 
 from app.models.schemas import FraudSignal, SelfieAnalysisRequest
 from app.services.face_biometrics import OpenCvFaceRecognizer, PassiveSpoofAnalyzer
 
 FACE_MATCH_PASS_THRESHOLD = 0.68
 FACE_MATCH_BORDERLINE_THRESHOLD = 0.74
+# Below this face-width/frame-width ratio the PAD models are unreliable and
+# strongly biased toward spoof, so small-face frames are excluded from the
+# model vote and a mostly-small burst is asked to move closer instead.
+MIN_FACE_WIDTH_RATIO = 0.22
 
 
 def _clamp(value: float) -> float:
@@ -84,6 +89,19 @@ class SelfieAnalyzer:
         face_result = self.face_recognizer.extract(content, "selfie")
         signals.extend(face_result.signals)
 
+        face_width_ratio = 0.0
+        if face_result.face_box and width:
+            face_width_ratio = face_result.face_box[2] / width
+            if face_width_ratio < MIN_FACE_WIDTH_RATIO:
+                signals.append(
+                    _signal(
+                        "SELFIE_FACE_TOO_SMALL",
+                        "You are a bit too far from the camera; move your face closer until it fills the yellow circle.",
+                        "medium",
+                        0.2,
+                    )
+                )
+
         passive_result = self.passive_spoof.analyze(content, face_result.face_box)
         signals.extend(passive_result.signals)
 
@@ -128,6 +146,7 @@ class SelfieAnalyzer:
                 "sharpness": round(sharpness, 2),
                 "center_skin_ratio": round(center_skin_ratio, 4),
                 "glare_ratio": round(glare_ratio, 4),
+                "selfie_face_width_ratio": round(face_width_ratio, 4),
                 "face_match_model": "opencv_yunet_sface",
                 "face_match_threshold": FACE_MATCH_PASS_THRESHOLD,
                 "face_match_borderline_threshold": FACE_MATCH_BORDERLINE_THRESHOLD,
@@ -138,6 +157,183 @@ class SelfieAnalyzer:
             },
             selfie_signals=signals,
         )
+
+    def analyze_frames(self, contents: list[bytes], filenames: list[str], reference_embedding: list[float] | None = None) -> SelfieAnalysisRequest:
+        frames = [(content, filenames[index] if index < len(filenames) else f"selfie-frame-{index}.jpg") for index, content in enumerate(contents) if content]
+        if not frames:
+            return self.analyze(b"", "selfie-empty-burst.jpg", reference_embedding)
+        if len(frames) == 1:
+            analysis = self.analyze(frames[0][0], frames[0][1], reference_embedding)
+            analysis.selfie_checks = {**analysis.selfie_checks, "selfie_burst_frame_count": 1, "selfie_burst_mode": "single_frame"}
+            return analysis
+
+        analyses = [self.analyze(content, filename, reference_embedding) for content, filename in frames]
+        representative_index, representative = max(
+            enumerate(analyses),
+            key=lambda item: (
+                item[1].selfie_quality_score or 0.0,
+                item[1].face_match_score or 0.0,
+                -(item[1].passive_liveness_risk or 1.0),
+            ),
+        )
+
+        temporal_checks = self._temporal_burst_checks([content for content, _ in frames])
+        frame_risks = [analysis.passive_liveness_risk or 1.0 for analysis in analyses]
+        screen_frame_scores = [self._float_check(analysis.selfie_checks, "passive_spoof_screen_frame_score") for analysis in analyses]
+        display_surface_scores = [self._float_check(analysis.selfie_checks, "passive_spoof_display_surface_score") for analysis in analyses]
+        paper_photo_scores = [self._float_check(analysis.selfie_checks, "passive_spoof_paper_photo_score") for analysis in analyses]
+        held_phone_scores = [self._float_check(analysis.selfie_checks, "passive_spoof_held_phone_score") for analysis in analyses]
+        model_risks = [self._float_check(analysis.selfie_checks, "passive_spoof_model_risk") for analysis in analyses]
+        display_like_scores = [
+            max(screen_score, display_score, paper_score)
+            for screen_score, display_score, paper_score in zip(screen_frame_scores, display_surface_scores, paper_photo_scores, strict=False)
+        ]
+        display_like_count = sum(
+            1
+            for screen_score, display_score, paper_score in zip(screen_frame_scores, display_surface_scores, paper_photo_scores, strict=False)
+            if screen_score >= 0.42 or display_score >= 0.58 or paper_score >= 0.38
+        )
+        display_like_ratio = display_like_count / max(len(analyses), 1)
+        held_phone_count = sum(score >= 0.42 for score in held_phone_scores)
+        held_phone_ratio = held_phone_count / max(len(held_phone_scores), 1)
+        face_width_ratios = [self._float_check(analysis.selfie_checks, "selfie_face_width_ratio") for analysis in analyses]
+        adequate_face_indices = [index for index, ratio_value in enumerate(face_width_ratios) if ratio_value >= MIN_FACE_WIDTH_RATIO]
+        small_face_count = len(analyses) - len(adequate_face_indices)
+        # PAD model output on small/distant faces is unreliable and biased
+        # toward spoof, so only frames with an adequate face size vote.
+        reliable_model_risks = [model_risks[index] for index in adequate_face_indices] or model_risks
+        model_high_count = sum(risk >= 0.72 for risk in reliable_model_risks)
+        model_high_ratio = model_high_count / max(len(reliable_model_risks), 1)
+        # A genuine replay keeps the PAD model risk high across the burst; one
+        # noisy frame out of ten is webcam noise, not a spoof.
+        model_spoof_recurring = model_high_count >= 2 and model_high_ratio >= 0.2
+        # Frame-level aggregate risk codes are replaced by the burst-level
+        # equivalents, which vote over reliable frames instead of letting one
+        # frame hard-fail the burst.
+        frame_aggregate_codes = {"PASSIVE_SPOOF_RISK_HIGH", "PAD_MODEL_SPOOF_HIGH"}
+        strong_frame_signals = [
+            signal
+            for analysis in analyses
+            for signal in analysis.selfie_signals
+            if signal.severity == "high" and signal.code not in frame_aggregate_codes
+        ]
+
+        burst_signals = self._dedupe_signals(representative.selfie_signals)
+        burst_signals = [signal for signal in burst_signals if signal.code not in frame_aggregate_codes]
+        if temporal_checks["selfie_burst_static_replay"] >= 1:
+            burst_signals.append(_signal("SELFIE_BURST_STATIC_REPLAY", "Selfie burst has almost no natural frame-to-frame motion or lighting change.", "high", 0.86))
+        if display_like_ratio >= 0.45:
+            burst_signals.append(_signal("SELFIE_BURST_DISPLAY_REPLAY", "Display or tablet replay cues recur across the selfie burst.", "high", max(display_like_scores)))
+        if held_phone_count >= 2 or held_phone_ratio >= 0.25:
+            burst_signals.append(_signal("SELFIE_BURST_HELD_PHONE_REPLAY", "Held-phone replay cues recur across the selfie burst.", "high", max(held_phone_scores)))
+        if small_face_count * 2 > len(analyses):
+            burst_signals.append(_signal("SELFIE_BURST_FACE_TOO_SMALL", "You are a bit too far from the camera. Move your face closer until it fills the yellow circle, then capture again.", "high", 0.7))
+        if model_spoof_recurring:
+            burst_signals.append(_signal("SELFIE_BURST_MODEL_SPOOF_HIGH", "Anti-spoofing model detected recurring spoof risk across the selfie burst.", "high", max(reliable_model_risks)))
+        burst_signals = self._dedupe_signals([*burst_signals, *strong_frame_signals])
+
+        max_frame_risk = max(frame_risks, default=1.0)
+        has_hard_replay_cue = any(signal.severity == "high" for signal in burst_signals)
+        representative_frame_risk = representative.passive_liveness_risk or 1.0
+        frame_risk_for_burst = max_frame_risk if has_hard_replay_cue else min(max_frame_risk, 0.48)
+        representative_risk_for_burst = representative_frame_risk if has_hard_replay_cue else min(representative_frame_risk, 0.48)
+        max_model_risk = max(reliable_model_risks, default=0.0)
+        model_risk_for_burst = max_model_risk if model_spoof_recurring else min(max_model_risk, 0.48)
+        burst_risk = max(
+            representative_risk_for_burst,
+            frame_risk_for_burst,
+            0.86 if temporal_checks["selfie_burst_static_replay"] >= 1 else 0.0,
+            0.86 if display_like_ratio >= 0.45 else 0.0,
+            0.88 if held_phone_count >= 2 or held_phone_ratio >= 0.25 else 0.0,
+            model_risk_for_burst,
+        )
+        hard_fail = any(signal.severity == "high" for signal in burst_signals)
+        passed = (
+            not hard_fail
+            and burst_risk <= 0.5
+            and (representative.face_match_score or 0.0) >= FACE_MATCH_PASS_THRESHOLD
+        )
+
+        representative.selfie_checks = {
+            **representative.selfie_checks,
+            "selfie_burst_mode": "multi_frame",
+            "selfie_burst_frame_count": len(frames),
+            "selfie_burst_representative_frame": representative_index,
+            "selfie_burst_max_passive_risk": round(max_frame_risk, 3),
+            "selfie_burst_mean_passive_risk": round(mean(frame_risks), 3),
+            "selfie_burst_display_like_count": display_like_count,
+            "selfie_burst_display_like_ratio": round(display_like_ratio, 3),
+            "selfie_burst_held_phone_count": held_phone_count,
+            "selfie_burst_held_phone_ratio": round(held_phone_ratio, 3),
+            "selfie_burst_max_display_surface_score": round(max(display_like_scores, default=0.0), 3),
+            "selfie_burst_max_held_phone_score": round(max(held_phone_scores, default=0.0), 3),
+            "selfie_burst_max_model_risk": round(max_model_risk, 3),
+            "selfie_burst_model_high_count": model_high_count,
+            "selfie_burst_model_high_ratio": round(model_high_ratio, 3),
+            "selfie_burst_small_face_count": small_face_count,
+            "selfie_burst_model_reliable_frame_count": len(reliable_model_risks),
+            **temporal_checks,
+        }
+        representative.passive_liveness_passed = passed
+        representative.passive_liveness_risk = round(burst_risk, 2)
+        representative.selfie_signals = burst_signals
+        return representative
+
+    @staticmethod
+    def _float_check(checks: dict[str, float | int | str | bool | None], key: str) -> float:
+        value = checks.get(key)
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, int | float):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    @staticmethod
+    def _dedupe_signals(signals: list[FraudSignal]) -> list[FraudSignal]:
+        severity_rank = {"low": 0, "medium": 1, "high": 2}
+        by_code: dict[str, FraudSignal] = {}
+        for signal in signals:
+            current = by_code.get(signal.code)
+            if (
+                current is None
+                or severity_rank[signal.severity] > severity_rank[current.severity]
+                or signal.score > current.score
+            ):
+                by_code[signal.code] = signal
+        return list(by_code.values())
+
+    @staticmethod
+    def _temporal_burst_checks(contents: list[bytes]) -> dict[str, float | int | bool]:
+        thumbnails = []
+        brightness_values = []
+        for content in contents:
+            try:
+                image = ImageOps.exif_transpose(Image.open(BytesIO(content))).convert("RGB")
+            except UnidentifiedImageError:
+                continue
+            gray = ImageOps.grayscale(image).resize((128, 96))
+            thumbnails.append(gray)
+            brightness_values.append(ImageStat.Stat(gray).mean[0])
+
+        deltas = []
+        for previous, current in zip(thumbnails, thumbnails[1:]):
+            delta = ImageChops.difference(previous, current)
+            deltas.append(ImageStat.Stat(delta).mean[0])
+
+        mean_delta = mean(deltas) if deltas else 0.0
+        brightness_std = pstdev(brightness_values) if len(brightness_values) > 1 else 0.0
+        static_replay = len(thumbnails) >= 4 and mean_delta < 0.55 and brightness_std < 0.28
+        return {
+            "selfie_burst_readable_frame_count": len(thumbnails),
+            "selfie_burst_mean_frame_delta": round(mean_delta, 3),
+            "selfie_burst_brightness_std": round(brightness_std, 3),
+            "selfie_burst_static_replay": static_replay,
+        }
 
     @staticmethod
     def _center_skin_ratio(image: Image.Image) -> float:

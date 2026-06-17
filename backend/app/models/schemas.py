@@ -26,8 +26,10 @@ class Challenge(BaseModel):
 
 
 class OcrResult(BaseModel):
-    document_type: Literal["passport"] = "passport"
+    document_type: Literal["passport", "lao_id_card"] = "passport"
     full_name: str | None = None
+    document_number: str | None = None
+    id_number: str | None = None
     passport_number: str | None = None
     nationality: str | None = None
     date_of_birth: date | None = None
@@ -61,6 +63,8 @@ class DocumentAnalysis(BaseModel):
 class BiometricAnalysis(BaseModel):
     active_liveness_passed: bool = False
     hand_challenge_passed: bool = False
+    active_liveness_checks: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
+    active_liveness_signals: list[FraudSignal] = Field(default_factory=list)
     passive_liveness_passed: bool = False
     face_match_score: float = 0.0
     passive_liveness_risk: float = 1.0
