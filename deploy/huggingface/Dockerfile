@@ -14,7 +14,7 @@ ARG REF=main
 FROM node:20-slim AS web
 ARG REPO
 ARG REF
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /web
 RUN git clone --depth 1 --branch ${REF} ${REPO} src
