@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /web
 RUN git clone --depth 1 --branch ${REF} ${REPO} src
 WORKDIR /web/src/frontend
-RUN npm ci && npm run build
+RUN npm install && npm run build
 
 # ---- Stage 2: backend + serve ----
 FROM python:3.12-slim
