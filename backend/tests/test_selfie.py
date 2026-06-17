@@ -438,11 +438,23 @@ def test_passive_spoof_detects_held_phone_screen_with_visible_fingers() -> None:
 
     assert analysis.passive_liveness_passed is False
     codes = {signal.code for signal in analysis.selfie_signals}
-    # The held-phone score is calibrated against live-office false positives,
-    # so the synthetic attack is rejected by the phone-frame hard fail while
-    # held-phone cues remain present as supporting evidence.
-    assert codes & {"SELFIE_HELD_PHONE_SCREEN", "SELFIE_POSSIBLE_HELD_PHONE_SCREEN"}
+    # The phone-screen frame is the dominant cue for this synthetic attack and
+    # hard-fails it. The held-phone bezel score is deliberately two-sided now,
+    # so it no longer false-rejects live selfies with a dark object on one side.
     assert "SELFIE_PHONE_SCREEN_FRAME" in codes
+
+
+def test_held_phone_score_low_for_one_sided_dark_object() -> None:
+    # A genuine selfie with a dark object (e.g. a jacket) on ONE side and a
+    # plain bright wall on the other must not read as a held phone.
+    image = Image.new("RGB", (1000, 760), (205, 208, 210))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((40, 120, 360, 700), fill=(18, 20, 24))  # dark object, left side only
+    face_box = (430, 200, 240, 300)
+
+    score = PassiveSpoofAnalyzer._held_phone_score(image, face_box)
+
+    assert score < 0.36, f"one-sided dark object scored as held phone: {score}"
 
 
 def test_passive_spoof_detects_tablet_screen_surface_when_frame_is_clipped() -> None:
