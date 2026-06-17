@@ -630,7 +630,11 @@ class PassiveSpoofAnalyzer:
 
         left_dark = column_dark_score(dark_mask[y1:y2, left_x1:left_x2])
         right_dark = column_dark_score(dark_mask[y1:y2, right_x1:right_x2])
-        dark_pair_score = _clamp((left_dark + right_dark) / 0.86)
+        # A held phone shows its dark body/bezel on BOTH sides of the framed
+        # face, so two-sided darkness is the real cue. A single dark object on
+        # one side (a jacket, furniture, a shadow) is common in genuine selfies
+        # and must not count as held-phone evidence by itself.
+        dark_both_score = _clamp(min(left_dark, right_dark) / 0.4)
         dark_one_side_score = _clamp(max(left_dark, right_dark) / 0.42)
 
         left_skin = ratio(skin_mask[y1:y2, left_x1:left_x2])
@@ -654,17 +658,18 @@ class PassiveSpoofAnalyzer:
             screen_region[local_face_top:local_face_bottom, local_face_left:local_face_right] = 0
         screen_surface_score = _clamp(ratio(screen_region) / 0.42)
 
-        hand_and_edge_bonus = 0.12 if skin_side_score >= 0.5 and dark_one_side_score >= 0.5 else 0.0
-        two_side_bonus = 0.12 if left_dark >= 0.18 and right_dark >= 0.18 else 0.0
+        # One dark side only matters as held-phone evidence when it is paired
+        # with the holder's hand/arm skin on a side band.
+        hand_and_edge_bonus = 0.12 if strong_skin_side_score >= 0.4 and dark_one_side_score >= 0.5 else 0.0
+        two_side_bonus = 0.12 if left_dark >= 0.2 and right_dark >= 0.2 else 0.0
         # The bright low-saturation surround score cannot separate a phone
-        # screen from a plain white wall, so it only gets a small weight and
-        # the main evidence must come from bezel darkness or hand/holder skin.
+        # screen from a plain white wall, so it only gets a small weight. The
+        # main evidence must come from two-sided bezel darkness or holder skin.
         return _clamp(
-            dark_pair_score * 0.34
-            + dark_one_side_score * 0.14
+            dark_both_score * 0.46
             + strong_skin_side_score * 0.34
-            + skin_side_score * 0.1
-            + screen_surface_score * 0.06
+            + skin_side_score * 0.08
+            + screen_surface_score * 0.05
             + hand_and_edge_bonus
             + two_side_bonus
         )
