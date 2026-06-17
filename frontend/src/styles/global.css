@@ -1463,6 +1463,13 @@ p {
   gap: 10px;
 }
 
+.gesture-loading-note {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0;
+}
+
 .gesture-list {
   display: grid;
   gap: 9px;

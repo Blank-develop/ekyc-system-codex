@@ -125,7 +125,10 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
         });
         hands.setOptions({
           maxNumHands: 1,
-          modelComplexity: 1,
+          // Lite landmark model (0) instead of full (1): ~3 MB smaller first
+          // load and faster per-frame inference, accurate enough for the
+          // finger-count / palm / fist style gesture challenge.
+          modelComplexity: 0,
           selfieMode: true,
           minDetectionConfidence: 0.68,
           minTrackingConfidence: 0.68
@@ -220,10 +223,15 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
   return (
     <div className="gesture-capture">
       <div className="gesture-instructions">
-        <button className="primary-button wide" type="button" onClick={startCamera} disabled={!modelReady || !currentChallenge}>
+        <button className="primary-button wide" type="button" onClick={startCamera} disabled={!currentChallenge}>
           <Camera size={18} />
           Open full-screen camera
         </button>
+        {!modelReady && !error && (
+          <p className="gesture-loading-note" aria-live="polite">
+            Preparing the hand detector… you can open the camera now; detection starts in a moment.
+          </p>
+        )}
         {error && <p className="form-error" aria-live="polite">{error}</p>}
       </div>
 
