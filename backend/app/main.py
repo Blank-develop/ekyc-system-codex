@@ -75,3 +75,25 @@ def _warm_models() -> None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Optionally serve the built Vite frontend from the same origin (single-port
+# deployments such as Hugging Face Spaces). Mounted last so /api and /health
+# keep priority. No-op for local dev/tests when the dist dir is not configured.
+def _mount_frontend() -> None:
+    dist = settings.frontend_dist
+    if not dist:
+        return
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    dist_path = Path(dist)
+    if not (dist_path / "index.html").exists():
+        logger.warning("frontend_dist set but index.html not found at %s", dist_path)
+        return
+    app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="frontend")
+    logger.info("serving frontend from %s", dist_path)
+
+
+_mount_frontend()

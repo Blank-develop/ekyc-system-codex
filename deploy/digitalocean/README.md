@@ -1,83 +1,84 @@
-# DigitalOcean Singapore Droplet Deployment
+# Branded Single-Domain Deployment (DigitalOcean + Route 53)
 
-This deployment runs the LALIGENCE eKYC API on a DigitalOcean Droplet in Singapore with Docker Compose:
+This deploys the **whole Kyron eKYC app** behind one branded HTTPS domain
+(`ekyc.myawswebsite.site`) on a single server with Docker Compose:
 
-- `api`: FastAPI backend built from the project `Dockerfile`.
+- `caddy`: serves the built Vite frontend **and** reverse-proxies `/api/*` to the
+  backend. Automatic HTTPS via Let's Encrypt. (Built from `Dockerfile.web`.)
+- `api`: FastAPI backend built from the project root `Dockerfile`.
 - `postgres`: PostgreSQL for verified profiles and enrolled Face ID templates.
-- `caddy`: HTTPS reverse proxy with automatic TLS certificates.
 
-The frontend should be deployed separately on Vercel and configured to call the API domain.
+Because the frontend and API share one origin, there is **no Vercel step and no
+cross-origin CORS** to manage. Testers just open `https://ekyc.myawswebsite.site`.
 
-## Why This Setup
+## Why this shape
 
-Render was slow for this project because the backend loads OCR, OpenCV, ONNX, and anti-spoofing models. A Droplet avoids platform sleep and gives the API a stable machine close to Laos and Southeast Asia testers.
+The camera (getUserMedia) only works over HTTPS, so the public demo must be
+served over TLS. Serving frontend + API from the same domain keeps it simple and
+fast, and avoids the dev-server slowness you get when tunnelling Vite. A server
+near Southeast Asia (Singapore) gives Laos testers low latency and stays up
+without depending on your Mac.
 
 ## Requirements
 
-- DigitalOcean Droplet in Singapore.
-- Ubuntu 24.04 LTS or 22.04 LTS.
-- Recommended minimum: 2 vCPU / 4 GB RAM for internal demos.
-- A domain or subdomain for the API, for example `api.your-domain.com`.
-- DNS A record pointing the API domain to the Droplet public IP.
-- Vercel account for the frontend.
+- A server (DigitalOcean Droplet in Singapore recommended), Ubuntu 22.04/24.04 LTS.
+- **At least 2 vCPU / 4 GB RAM** — the backend loads OCR, OpenCV, ONNX, and
+  anti-spoofing models.
+- Access to the `myawswebsite.site` hosted zone in **AWS Route 53** (this domain's
+  DNS is on AWS, not Cloudflare).
 
-You need a real API domain because the Vercel frontend runs on HTTPS. Browsers block HTTPS pages from calling an insecure `http://droplet-ip:8000` backend.
+## 1. Create the server
 
-## 1. Create The Droplet
+In DigitalOcean: create a Droplet, Region **Singapore**, Ubuntu LTS,
+**2 vCPU / 4 GB RAM** or larger, add your SSH key, create. Note its public IP.
 
-In DigitalOcean:
+## 2. Point the branded domain at it (Route 53)
 
-1. Create Droplet.
-2. Region: Singapore.
-3. Image: Ubuntu LTS.
-4. Size: at least 2 vCPU / 4 GB RAM for smoother AI model loading.
-5. Add your SSH key.
-6. Create the Droplet.
-
-Point DNS:
+In the AWS Route 53 console, open the `myawswebsite.site` hosted zone and create:
 
 ```text
-api.your-domain.com  A  <droplet-public-ip>
+Record name:  ekyc.myawswebsite.site
+Type:         A
+Value:        <droplet-public-ip>
+TTL:          300
 ```
 
-Wait until DNS resolves:
+(Or with the AWS CLI — replace ZONE_ID and the IP:)
 
 ```bash
-dig +short api.your-domain.com
+aws route53 change-resource-record-sets --hosted-zone-id ZONE_ID --change-batch '{
+  "Changes": [{
+    "Action": "UPSERT",
+    "ResourceRecordSet": {
+      "Name": "ekyc.myawswebsite.site",
+      "Type": "A",
+      "TTL": 300,
+      "ResourceRecords": [{ "Value": "<droplet-public-ip>" }]
+    }
+  }]
+}'
 ```
 
-## 2. Bootstrap The Droplet
+Wait until it resolves:
 
-SSH into the Droplet:
+```bash
+dig +short ekyc.myawswebsite.site
+```
+
+## 3. Bootstrap the server
 
 ```bash
 ssh root@<droplet-public-ip>
-```
-
-Install Docker and open ports:
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/Blank-develop/ekyc-system-codex/main/deploy/digitalocean/bootstrap-ubuntu.sh -o bootstrap-ubuntu.sh
 bash bootstrap-ubuntu.sh
+exit && ssh root@<droplet-public-ip>   # re-login so the docker group applies
 ```
 
-Log out and back in so Docker group permissions apply:
-
-```bash
-exit
-ssh root@<droplet-public-ip>
-```
-
-## 3. Clone The Repository
+## 4. Clone and configure
 
 ```bash
 git clone https://github.com/Blank-develop/ekyc-system-codex.git
 cd ekyc-system-codex
-```
-
-## 4. Configure Production Env
-
-```bash
 cp deploy/digitalocean/.env.example deploy/digitalocean/.env
 nano deploy/digitalocean/.env
 ```
@@ -85,160 +86,78 @@ nano deploy/digitalocean/.env
 Set:
 
 ```bash
-API_DOMAIN=api.your-domain.com
-LALIGENCE_CORS_ORIGINS=https://your-vercel-project.vercel.app
-POSTGRES_PASSWORD=<long-random-password>
+SITE_DOMAIN=ekyc.myawswebsite.site
+LALIGENCE_CORS_ORIGINS=https://ekyc.myawswebsite.site
+POSTGRES_PASSWORD=$(openssl rand -base64 36)   # paste the generated value
 ```
 
-Generate a password:
-
-```bash
-openssl rand -base64 36
-```
-
-You can update `LALIGENCE_CORS_ORIGINS` after Vercel gives you the final frontend URL.
-
-## 5. Start The Backend Stack
+## 5. Build and start
 
 ```bash
 docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml up -d --build
 ```
 
-Watch logs:
+The first build is slow (installs Python deps, downloads face models, builds the
+frontend). Watch progress:
 
 ```bash
 docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml logs -f api caddy
 ```
 
-Check health:
+## 6. Verify
 
 ```bash
-curl -i https://api.your-domain.com/health
+# Frontend (expect HTTP/2 200):
+curl -I https://ekyc.myawswebsite.site/
+
+# Backend via the proxied /api path (expect 200 + a JSON session):
+curl -s -X POST https://ekyc.myawswebsite.site/api/verifications \
+  -H "Content-Type: application/json" -d '{"user_id":"healthcheck"}' -w "\nHTTP %{http_code}\n"
 ```
 
-Expected:
+(The backend's own `/health` is only reachable inside the container — Caddy
+exposes just `/api/*` — so use an `/api` call to verify it end-to-end.)
 
-```text
-HTTP/2 200
-```
+Then open **https://ekyc.myawswebsite.site** in a browser and run a verification.
+The camera should prompt for permission (HTTPS origin).
 
-## 6. Deploy Frontend To Vercel
-
-In Vercel:
-
-1. Import `https://github.com/Blank-develop/ekyc-system-codex`.
-2. Framework preset: Vite.
-3. Root directory: repository root.
-4. Build command: `npm install && npm --prefix frontend run build`.
-5. Output directory: `frontend/dist`.
-6. Add environment variable:
+## 7. Update the deployment
 
 ```bash
-VITE_API_BASE_URL=https://api.your-domain.com
-```
-
-Deploy the project.
-
-After Vercel gives the production URL, update the Droplet env:
-
-```bash
-nano deploy/digitalocean/.env
-```
-
-Set:
-
-```bash
-LALIGENCE_CORS_ORIGINS=https://your-vercel-project.vercel.app
-```
-
-Restart the API:
-
-```bash
-docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml up -d
-```
-
-If you also use a custom Vercel domain, include both origins separated by commas:
-
-```bash
-LALIGENCE_CORS_ORIGINS=https://your-vercel-project.vercel.app,https://ekyc.your-domain.com
-```
-
-## 7. Update The Deployment
-
-On the Droplet:
-
-```bash
-cd ekyc-system-codex
-git pull
+cd ekyc-system-codex && git pull
 docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml up -d --build
 ```
 
-## 8. Backup PostgreSQL
-
-Create a backup:
+## 8. Back up PostgreSQL
 
 ```bash
 docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml exec postgres \
   pg_dump -U laligence -d laligence_ekyc > laligence_ekyc_backup.sql
 ```
 
-Restore a backup:
-
-```bash
-cat laligence_ekyc_backup.sql | docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml exec -T postgres \
-  psql -U laligence -d laligence_ekyc
-```
-
 ## Troubleshooting
 
-### Vercel Shows Failed To Fetch
+### Caddy does not get HTTPS
+- `dig +short ekyc.myawswebsite.site` must return the droplet IP.
+- Ports `80` and `443` open (the bootstrap script opens them).
+- `SITE_DOMAIN` in `.env` is the hostname only — no `https://`.
+- `docker compose ... logs -f caddy`
 
-Check:
+### App loads but API calls fail
+- Confirm the `api` container is healthy: `docker compose ... ps`.
+- `/api/*` is proxied by Caddy to `api:8000`; check Caddy + api logs.
 
-- `VITE_API_BASE_URL` is `https://api.your-domain.com`.
-- The API health endpoint works from your laptop.
-- `LALIGENCE_CORS_ORIGINS` includes the exact Vercel origin.
-- Restart API after changing CORS env.
+### First request is slow
+- The backend warms face/anti-spoof models on first use. Keep the container
+  running; 4 GB RAM gives smoother loading.
 
-### Caddy Does Not Get HTTPS
+### Uploads fail with 413
+Raise `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` in `.env`, then
+`docker compose ... up -d`.
 
-Check:
+## Production notes
 
-- DNS A record points to the Droplet IP.
-- Ports `80` and `443` are open.
-- `API_DOMAIN` in `.env` has no `https://`, only the hostname.
-- Caddy logs:
-
-```bash
-docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml logs -f caddy
-```
-
-### API Is Slow On First Request
-
-The backend loads face and anti-spoofing models. A Droplet avoids sleep, but the first request after container restart can still warm models. Keep the container running and use at least 4 GB RAM for smoother testing.
-
-### Uploads Fail With 413
-
-Increase:
-
-```bash
-LALIGENCE_MAX_UPLOAD_SIZE_BYTES=12582912
-```
-
-Then restart:
-
-```bash
-docker compose --env-file deploy/digitalocean/.env -f deploy/digitalocean/docker-compose.yml up -d
-```
-
-## Production Notes
-
-This setup is appropriate for company testing and demos. Before production:
-
-- Add authenticated API access.
-- Protect or remove profile admin endpoints.
-- Encrypt biometric templates at rest.
-- Add audit logs and retention/deletion workflows.
-- Add monitoring and alerts.
-- Configure automated PostgreSQL backups.
-- Consider DigitalOcean Managed PostgreSQL instead of container PostgreSQL for stronger durability.
+Appropriate for company testing/demos. Before production: authenticated API
+access, protect/remove the profile admin endpoints, encrypt biometric templates
+at rest, audit logs + retention/deletion, monitoring, automated PostgreSQL
+backups, and consider DigitalOcean Managed PostgreSQL.

@@ -44,13 +44,15 @@ services:
       start_period: 60s
 
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile.web
     restart: unless-stopped
     depends_on:
       api:
         condition: service_started
     environment:
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in deploy/digitalocean/.env}
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in deploy/digitalocean/.env}
     ports:
       - "80:80"
       - "443:443"
