@@ -2,6 +2,7 @@ import type { HandsConfig, InputMap, NormalizedLandmarkList, Options, Results, R
 import { Camera, CameraOff, Check, Hand, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Challenge } from "../lib/api";
+import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
 
 type HandsInstance = {
   close: () => Promise<void>;
@@ -29,6 +30,15 @@ type GestureMetric = {
   centerY: number;
   fingerCount: number;
   gesture: string | null;
+  fingers: FingerState;
+};
+
+type FingerState = {
+  thumb: boolean;
+  index: boolean;
+  middle: boolean;
+  ring: boolean;
+  pinky: boolean;
 };
 
 interface HandGestureCaptureProps {
@@ -41,7 +51,14 @@ const emptyMetric: GestureMetric = {
   centerX: 0,
   centerY: 0,
   fingerCount: 0,
-  gesture: null
+  gesture: null,
+  fingers: {
+    thumb: false,
+    index: false,
+    middle: false,
+    ring: false,
+    pinky: false
+  }
 };
 
 export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptureProps) {
@@ -66,6 +83,12 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
   const startCamera = async () => {
     try {
       setError(null);
+      const supportMessage = cameraUnavailableMessage();
+      if (supportMessage) {
+        setError(supportMessage);
+        setCameraReady(false);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
@@ -73,8 +96,8 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
       streamRef.current = stream;
       setCameraReady(true);
       setFullscreen(true);
-    } catch {
-      setError("Camera permission is required for the gesture challenge.");
+    } catch (error) {
+      setError(cameraErrorMessage(error, "Camera permission is required for the gesture challenge."));
       setCameraReady(false);
     }
   };
@@ -209,8 +232,11 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
           const isCurrent = currentChallenge?.id === challenge.id;
           return (
             <div className={`gesture-card ${challenge.passed ? "passed" : ""} ${isCurrent ? "current" : ""}`} key={challenge.id}>
-              <span>{challenge.passed ? <Check size={16} /> : challenge.prompt}</span>
-              <small>{challenge.passed ? "Completed" : isCurrent ? "Perform this gesture inside the circle" : "Waiting for previous gesture"}</small>
+              <span>
+                <span className="gesture-card-visual" aria-hidden="true">{gestureVisual(challenge.id)}</span>
+                {challenge.passed ? <Check size={16} /> : challenge.prompt}
+              </span>
+              <small>{challenge.passed ? "Completed" : isCurrent ? challenge.instruction : "Waiting for previous gesture"}</small>
             </div>
           );
         })}
@@ -240,7 +266,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
           <div className="gesture-topbar">
             <div>
               <strong>{currentChallenge?.prompt ?? "Gesture complete"}</strong>
-              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched) : "Loading hand model"}</span>
+              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched, currentChallenge?.instruction) : "Loading hand model"}</span>
             </div>
             <button className="icon-button" type="button" onClick={stopCamera} aria-label="Close gesture camera">
               <X size={22} />
@@ -302,11 +328,12 @@ function readGestureMetric(landmarks: NormalizedLandmarkList): GestureMetric {
     centerX,
     centerY,
     fingerCount,
-    gesture
+    gesture,
+    fingers
   };
 }
 
-function extendedFingers(landmarks: NormalizedLandmarkList) {
+function extendedFingers(landmarks: NormalizedLandmarkList): FingerState {
   const palmWidth = distance(landmarks[5], landmarks[17]);
   return {
     thumb: distance(landmarks[4], landmarks[9]) > palmWidth * 0.72,
@@ -319,13 +346,33 @@ function extendedFingers(landmarks: NormalizedLandmarkList) {
 
 function classifyGesture(
   landmarks: NormalizedLandmarkList,
-  fingers: { thumb: boolean; index: boolean; middle: boolean; ring: boolean; pinky: boolean },
+  fingers: FingerState,
   fingerCount: number
 ) {
   const thumbIndexDistance = distance(landmarks[4], landmarks[8]);
   const palmWidth = Math.max(distance(landmarks[5], landmarks[17]), 0.001);
-  const ok = thumbIndexDistance < palmWidth * 0.34 && fingers.middle && fingers.ring && fingers.pinky;
+
+  // All fingertips gathered on the thumb tip; must run before the OK check
+  // because the pinched pose also brings thumb and index together.
+  const pinched =
+    fingerCount >= 2 &&
+    [8, 12, 16, 20].every((tip) => distance(landmarks[tip], landmarks[4]) < palmWidth * 0.55);
+  if (pinched) return "pinched_fingers";
+
+  const ok = thumbIndexDistance < palmWidth * 0.38;
   if (ok) return "ok";
+
+  const crossed =
+    fingers.index && fingers.middle && !fingers.ring && !fingers.pinky &&
+    distance(landmarks[8], landmarks[12]) < palmWidth * 0.3;
+  if (crossed) return "crossed_fingers";
+
+  const lShape = fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky;
+  if (lShape) return "l_shape";
+
+  const thumbOnly = fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky;
+  const thumbUp = thumbOnly && landmarks[4].y < landmarks[0].y - 0.03;
+  if (thumbUp) return "thumb_up";
 
   const thumbDown = fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky && landmarks[4].y > landmarks[0].y + 0.05;
   if (thumbDown) return "thumb_down";
@@ -333,16 +380,34 @@ function classifyGesture(
   const love = fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && fingers.pinky;
   if (love) return "i_love_you";
 
+  const callMe = fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && fingers.pinky;
+  if (callMe) return "call_me";
+
+  const rockOn = !fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && fingers.pinky;
+  if (rockOn) return "rock_on";
+
   if (fingerCount >= 1 && fingerCount <= 5) return String(fingerCount);
+  if (fingerCount === 0) return "fist";
   return null;
 }
 
 function matchesGesture(challengeId: string, metric: GestureMetric) {
-  if (challengeId === "one") return metric.fingerCount === 1;
-  if (challengeId === "two") return metric.fingerCount === 2;
+  if (["one", "point"].includes(challengeId)) return metric.fingerCount === 1;
+  if (["two", "peace", "victory"].includes(challengeId)) return metric.fingerCount === 2;
   if (challengeId === "three") return metric.fingerCount === 3;
   if (challengeId === "four") return metric.fingerCount === 4;
-  if (challengeId === "five") return metric.fingerCount === 5;
+  if (["five", "open_palm", "high_five", "stop"].includes(challengeId)) return metric.fingerCount >= 4;
+  if (challengeId === "fist") return metric.fingerCount === 0 || metric.gesture === "fist";
+  if (["ok", "pinch", "small_ok"].includes(challengeId)) return metric.gesture === "ok";
+  if (challengeId === "thumb_up") return metric.gesture === "thumb_up" || (metric.fingers.thumb && metric.fingerCount <= 1);
+  if (challengeId === "thumb_down") return metric.gesture === "thumb_down" || (metric.fingers.thumb && metric.fingerCount <= 1);
+  if (challengeId === "rock_on") return metric.gesture === "rock_on" || metric.gesture === "i_love_you" || (metric.fingers.index && metric.fingers.pinky);
+  if (challengeId === "call_me") return metric.gesture === "call_me" || (metric.fingers.thumb && metric.fingers.pinky);
+  if (challengeId === "l_shape") {
+    return metric.gesture === "l_shape" || (metric.fingers.thumb && metric.fingers.index && !metric.fingers.middle && !metric.fingers.ring && !metric.fingers.pinky);
+  }
+  if (challengeId === "pinched_fingers") return metric.gesture === "pinched_fingers";
+  if (challengeId === "crossed_fingers") return metric.gesture === "crossed_fingers";
   return metric.gesture === challengeId;
 }
 
@@ -357,11 +422,11 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function fullscreenInstruction(metric: GestureMetric, inside: boolean, matched: boolean) {
+function fullscreenInstruction(metric: GestureMetric, inside: boolean, matched: boolean, instruction?: string) {
   if (matched) return "Matched. Passing gesture...";
   if (!metric.handPresent) return "Show your hand inside the circle.";
   if (!inside) return "Move your hand into the circle.";
-  return "Gesture detected in circle. Adjust fingers to match the prompt.";
+  return instruction ?? "Gesture detected in circle. Adjust fingers to match the prompt.";
 }
 
 function gestureVisual(challengeId?: string) {
@@ -370,8 +435,23 @@ function gestureVisual(challengeId?: string) {
   if (challengeId === "three") return "3️⃣";
   if (challengeId === "four") return "4️⃣";
   if (challengeId === "five") return "5️⃣";
+  if (challengeId === "point") return "☝️";
+  if (challengeId === "peace") return "✌️";
+  if (challengeId === "victory") return "✌️";
+  if (challengeId === "open_palm") return "✋";
+  if (challengeId === "high_five") return "🖐️";
+  if (challengeId === "stop") return "✋";
+  if (challengeId === "fist") return "✊";
+  if (challengeId === "thumb_up") return "👍";
   if (challengeId === "ok") return "👌";
+  if (challengeId === "pinch") return "👌";
+  if (challengeId === "small_ok") return "👌";
+  if (challengeId === "rock_on") return "🤘";
+  if (challengeId === "call_me") return "🤙";
   if (challengeId === "thumb_down") return "👎";
   if (challengeId === "i_love_you") return "🤟";
+  if (challengeId === "l_shape") return "L";
+  if (challengeId === "pinched_fingers") return "🤌";
+  if (challengeId === "crossed_fingers") return "🤞";
   return "✓";
 }

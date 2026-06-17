@@ -96,7 +96,7 @@ class FaceProfileStore:
                 db.merge(record)
                 self._active_records_cache = None
         except IntegrityError as exc:
-            raise ProfileEnrollmentConflict("Profile or passport is already enrolled.") from exc
+            raise ProfileEnrollmentConflict("Profile or identity document is already enrolled.") from exc
         return profile
 
     def match(self, face_template: list[float], compare, threshold: float) -> FaceLoginMatch:
@@ -145,7 +145,7 @@ class FaceProfileStore:
 
     def _find_existing(self, db: Session, result: VerificationResult) -> FaceProfileRecord | None:
         user_id = result.user_id.strip()
-        passport_number = result.document.ocr.passport_number
+        passport_number = result.document.ocr.passport_number or result.document.ocr.document_number or result.document.ocr.id_number
         user_record = db.scalar(
             select(FaceProfileRecord).where(FaceProfileRecord.user_id == user_id, FaceProfileRecord.active.is_(True))
         )
@@ -158,7 +158,7 @@ class FaceProfileStore:
                 )
             )
         if passport_record and passport_record.user_id and passport_record.user_id != user_id:
-            raise ProfileEnrollmentConflict("Passport number is already enrolled to another user_id.")
+            raise ProfileEnrollmentConflict("Identity document number is already enrolled to another user_id.")
         if user_record:
             return user_record
         if passport_record:
@@ -189,7 +189,7 @@ class FaceProfileStore:
             age=self._age(ocr.date_of_birth),
             date_of_birth=ocr.date_of_birth,
             nationality=ocr.nationality,
-            passport_number=ocr.passport_number,
+            passport_number=ocr.passport_number or ocr.document_number or ocr.id_number,
             passport_expiry=ocr.expiry_date,
             enrolled_at=enrolled_at,
             last_login_at=None,

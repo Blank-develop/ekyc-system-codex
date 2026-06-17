@@ -21,6 +21,8 @@ ANTI_SPOOF_MODELS = (
     ANTI_SPOOF_MODEL_DIR / "best_model_quantized.onnx",
     ANTI_SPOOF_MODEL_DIR / "MiniFASNetV2.onnx",
     ANTI_SPOOF_MODEL_DIR / "MiniFASNetV1SE.onnx",
+    ANTI_SPOOF_MODEL_DIR / "DeepPixBiS.onnx",
+    ANTI_SPOOF_MODEL_DIR / "CDCN.onnx",
 )
 SELFIE_MIN_FACE_CONFIDENCE = 0.82
 
@@ -249,6 +251,9 @@ class PassiveSpoofAnalyzer:
         saturation_extreme = self._saturation_extremes(crop)
         moire = self._moire_score(crop)
         screen_frame = self._screen_frame_score(image, face_box)
+        display_surface = self._display_surface_score(image, face_box)
+        paper_photo = self._paper_photo_score(image, face_box)
+        held_phone = self._held_phone_score(image, face_box)
         model_result = self._model_spoof_result(image, face_box)
         flatness = _clamp((22 - contrast) / 22)
 
@@ -257,6 +262,9 @@ class PassiveSpoofAnalyzer:
             + saturation_extreme * 1.2
             + moire * 0.38
             + screen_frame * 0.9
+            + display_surface * 0.9
+            + paper_photo * 1.05
+            + held_phone * 1.15
             + flatness * 0.22
             + (0.18 if brightness > 232 or brightness < 38 else 0.0)
             + (0.14 if sharpness < 2.2 else 0.0)
@@ -276,6 +284,18 @@ class PassiveSpoofAnalyzer:
             signals.append(_signal("SELFIE_PHONE_SCREEN_FRAME", "A phone or screen-like rectangle appears around the face.", "high", screen_frame))
         elif screen_frame >= 0.42:
             signals.append(_signal("SELFIE_POSSIBLE_SCREEN_FRAME", "A possible screen rectangle appears around the face.", "medium", screen_frame))
+        if held_phone >= 0.52:
+            signals.append(_signal("SELFIE_HELD_PHONE_SCREEN", "A held phone screen appears around the selfie face.", "high", held_phone))
+        elif held_phone >= 0.36:
+            signals.append(_signal("SELFIE_POSSIBLE_HELD_PHONE_SCREEN", "Possible held-phone replay cues appear around the selfie face.", "medium", held_phone))
+        if display_surface >= 0.58:
+            signals.append(_signal("SELFIE_TABLET_SCREEN_SURFACE", "A tablet or display surface appears around the face.", "high", display_surface))
+        elif display_surface >= 0.4:
+            signals.append(_signal("SELFIE_POSSIBLE_DISPLAY_SURFACE", "Possible tablet or display surface cues appear around the face.", "medium", display_surface))
+        if paper_photo >= 0.56:
+            signals.append(_signal("SELFIE_PRINTED_PHOTO_PAPER", "A printed photo or paper sheet appears around the face.", "high", paper_photo))
+        elif paper_photo >= 0.38:
+            signals.append(_signal("SELFIE_POSSIBLE_PRINTED_PHOTO", "Possible printed-photo paper cues appear around the face.", "medium", paper_photo))
         if model_result["risk"] >= 0.72 and model_result["available_count"] > 0:
             signals.append(_signal("PAD_MODEL_SPOOF_HIGH", "Anti-spoofing model predicts screen/photo spoof risk.", "high", model_result["risk"]))
         elif model_result["risk"] >= 0.52 and model_result["available_count"] > 0:
@@ -283,7 +303,7 @@ class PassiveSpoofAnalyzer:
 
         return PassiveSpoofResult(
             risk=round(risk, 3),
-            passed=risk < 0.5 and screen_frame < 0.62 and model_result["risk"] < 0.72,
+            passed=risk < 0.5 and screen_frame < 0.62 and display_surface < 0.58 and held_phone < 0.52 and model_result["risk"] < 0.72,
             checks={
                 "passive_spoof_model": "facenox_minifas_onnx_ensemble" if model_result["available_count"] else "heuristic_pad_v1",
                 "passive_spoof_risk": round(risk, 3),
@@ -294,6 +314,9 @@ class PassiveSpoofAnalyzer:
                 "passive_spoof_saturation_extreme": round(saturation_extreme, 4),
                 "passive_spoof_moire_score": round(moire, 3),
                 "passive_spoof_screen_frame_score": round(screen_frame, 3),
+                "passive_spoof_display_surface_score": round(display_surface, 3),
+                "passive_spoof_paper_photo_score": round(paper_photo, 3),
+                "passive_spoof_held_phone_score": round(held_phone, 3),
                 "passive_spoof_face_brightness": round(brightness, 2),
                 "passive_spoof_face_contrast": round(contrast, 2),
                 "passive_spoof_face_sharpness": round(sharpness, 2),
@@ -360,6 +383,7 @@ class PassiveSpoofAnalyzer:
             return self._models
         settings = get_settings()
         paths = self.model_paths if settings.pad_enable_companion_models else self.model_paths[:1]
+        paths = (*paths, *(Path(path) for path in settings.pad_extra_model_paths))
         self._models = [OnnxAntiSpoofModel(path) for path in paths if path.exists()]
         return self._models
 
@@ -467,6 +491,323 @@ class PassiveSpoofAnalyzer:
         return best
 
     @staticmethod
+    def _display_surface_score(image: Image.Image, face_box: tuple[int, int, int, int] | None) -> float:
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return 0.0
+
+        if face_box is None:
+            return 0.0
+
+        width, height = image.size
+        face_x, face_y, face_w, face_h = face_box
+        scale = 700 / max(width, height)
+        resized = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+        rgb = np.asarray(resized)
+        hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        scaled_height, scaled_width = gray.shape
+
+        face_x_s = face_x * scale
+        face_y_s = face_y * scale
+        face_w_s = face_w * scale
+        face_h_s = face_h * scale
+        face_cx = face_x_s + face_w_s / 2
+        face_cy = face_y_s + face_h_s / 2
+
+        screen_like_mask = ((hsv[:, :, 1] < 82) & (hsv[:, :, 2] > 132)).astype("uint8")
+        local_face_left = max(0, int(face_x_s - face_w_s * 0.18))
+        local_face_top = max(0, int(face_y_s - face_h_s * 0.2))
+        local_face_right = min(scaled_width, int(face_x_s + face_w_s * 1.18))
+        local_face_bottom = min(scaled_height, int(face_y_s + face_h_s * 1.2))
+        context = screen_like_mask.copy()
+        context[local_face_top:local_face_bottom, local_face_left:local_face_right] = 0
+
+        surface_left = max(0, int(face_x_s - face_w_s * 1.1))
+        surface_top = max(0, int(face_y_s - face_h_s * 0.45))
+        surface_right = min(scaled_width, int(face_x_s + face_w_s * 2.1))
+        surface_bottom = min(scaled_height, int(face_y_s + face_h_s * 1.45))
+        surface_region = context[surface_top:surface_bottom, surface_left:surface_right]
+        surface_ratio = float(surface_region.mean()) if surface_region.size else 0.0
+
+        band = max(8, min(scaled_width, scaled_height) // 18)
+        edge_dark_ratios = [
+            float((gray[:band, :] < 45).mean()),
+            float((gray[-band:, :] < 45).mean()),
+            float((gray[:, :band] < 45).mean()),
+            float((gray[:, -band:] < 45).mean()),
+        ]
+        dark_edge_pair = max(
+            (edge_dark_ratios[2] + edge_dark_ratios[3]) / 2,
+            (edge_dark_ratios[0] + edge_dark_ratios[1]) / 2,
+        )
+
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 35, 110)
+        lines = cv2.HoughLinesP(
+            edges,
+            1,
+            np.pi / 180,
+            threshold=85,
+            minLineLength=int(min(scaled_width, scaled_height) * 0.34),
+            maxLineGap=18,
+        )
+        vertical_lines: list[float] = []
+        horizontal_lines: list[float] = []
+        if lines is not None:
+            for x1, y1, x2, y2 in lines[:, 0, :]:
+                dx = abs(int(x2) - int(x1))
+                dy = abs(int(y2) - int(y1))
+                if dy > min(scaled_width, scaled_height) * 0.32 and dx < max(8, dy * 0.08):
+                    vertical_lines.append((float(x1) + float(x2)) / 2)
+                if dx > min(scaled_width, scaled_height) * 0.32 and dy < max(8, dx * 0.08):
+                    horizontal_lines.append((float(y1) + float(y2)) / 2)
+
+        has_vertical_pair = any(line < face_cx - face_w_s * 0.45 for line in vertical_lines) and any(line > face_cx + face_w_s * 0.45 for line in vertical_lines)
+        has_horizontal_pair = any(line < face_cy - face_h_s * 0.35 for line in horizontal_lines) and any(line > face_cy + face_h_s * 0.35 for line in horizontal_lines)
+        line_pair_score = min((0.55 if has_vertical_pair else 0.0) + (0.45 if has_horizontal_pair else 0.0), 1.0)
+
+        clipped_display_bonus = 0.1 if surface_ratio > 0.45 and dark_edge_pair > 0.18 else 0.0
+        return _clamp(surface_ratio * 0.3 + dark_edge_pair * 0.35 + line_pair_score * 0.25 + clipped_display_bonus)
+
+    @staticmethod
+    def _held_phone_score(image: Image.Image, face_box: tuple[int, int, int, int] | None) -> float:
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return 0.0
+
+        if face_box is None:
+            return 0.0
+
+        width, height = image.size
+        face_x, face_y, face_w, face_h = face_box
+        scale = 700 / max(width, height)
+        resized = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+        rgb = np.asarray(resized)
+        hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+        scaled_height, scaled_width = hsv.shape[:2]
+
+        fx = face_x * scale
+        fy = face_y * scale
+        fw = face_w * scale
+        fh = face_h * scale
+        if fw <= 0 or fh <= 0:
+            return 0.0
+
+        # Keep the side regions at face level. Extending below the chin makes
+        # dark clothing on the shoulders read as phone-bezel evidence, which
+        # falsely rejects live users wearing dark shirts.
+        y1 = max(0, int(fy - fh * 0.35))
+        y2 = min(scaled_height, int(fy + fh * 0.9))
+        left_x1 = max(0, int(fx - fw * 1.25))
+        left_x2 = max(0, min(scaled_width, int(fx - fw * 0.08)))
+        right_x1 = min(scaled_width, max(0, int(fx + fw * 1.08)))
+        right_x2 = min(scaled_width, int(fx + fw * 2.05))
+
+        dark_mask = ((hsv[:, :, 2] < 62) & (hsv[:, :, 1] < 150)).astype("uint8")
+        skin_mask = (
+            (hsv[:, :, 0] >= 0)
+            & (hsv[:, :, 0] <= 24)
+            & (hsv[:, :, 1] >= 34)
+            & (hsv[:, :, 1] <= 175)
+            & (hsv[:, :, 2] >= 78)
+            & (hsv[:, :, 2] <= 245)
+        ).astype("uint8")
+        screen_like_mask = ((hsv[:, :, 1] < 86) & (hsv[:, :, 2] > 128)).astype("uint8")
+
+        def column_dark_score(region: Any) -> float:
+            if region.size == 0:
+                return 0.0
+            column_density = region.mean(axis=0)
+            return float(max(column_density.max(initial=0.0), (column_density > 0.32).mean()))
+
+        def ratio(region: Any) -> float:
+            return float(region.mean()) if region.size else 0.0
+
+        left_dark = column_dark_score(dark_mask[y1:y2, left_x1:left_x2])
+        right_dark = column_dark_score(dark_mask[y1:y2, right_x1:right_x2])
+        dark_pair_score = _clamp((left_dark + right_dark) / 0.86)
+        dark_one_side_score = _clamp(max(left_dark, right_dark) / 0.42)
+
+        left_skin = ratio(skin_mask[y1:y2, left_x1:left_x2])
+        right_skin = ratio(skin_mask[y1:y2, right_x1:right_x2])
+        skin_side_score = _clamp((left_skin + right_skin) / 0.5)
+        # A held-phone replay usually shows the holder's hand, arm, or own face
+        # filling one side band. Small skin traces (the user's neck/shoulder)
+        # must not count as replay evidence.
+        strong_skin_side_score = _clamp((max(left_skin, right_skin) - 0.3) / 0.45)
+
+        sx1 = max(0, int(fx - fw * 0.55))
+        sy1 = max(0, int(fy - fh * 0.28))
+        sx2 = min(scaled_width, int(fx + fw * 1.55))
+        sy2 = min(scaled_height, int(fy + fh * 1.35))
+        local_face_left = max(0, int(fx - sx1 - fw * 0.1))
+        local_face_top = max(0, int(fy - sy1 - fh * 0.1))
+        local_face_right = min(max(0, sx2 - sx1), int(fx - sx1 + fw * 1.1))
+        local_face_bottom = min(max(0, sy2 - sy1), int(fy - sy1 + fh * 1.1))
+        screen_region = screen_like_mask[sy1:sy2, sx1:sx2].copy()
+        if screen_region.size:
+            screen_region[local_face_top:local_face_bottom, local_face_left:local_face_right] = 0
+        screen_surface_score = _clamp(ratio(screen_region) / 0.42)
+
+        hand_and_edge_bonus = 0.12 if skin_side_score >= 0.5 and dark_one_side_score >= 0.5 else 0.0
+        two_side_bonus = 0.12 if left_dark >= 0.18 and right_dark >= 0.18 else 0.0
+        # The bright low-saturation surround score cannot separate a phone
+        # screen from a plain white wall, so it only gets a small weight and
+        # the main evidence must come from bezel darkness or hand/holder skin.
+        return _clamp(
+            dark_pair_score * 0.34
+            + dark_one_side_score * 0.14
+            + strong_skin_side_score * 0.34
+            + skin_side_score * 0.1
+            + screen_surface_score * 0.06
+            + hand_and_edge_bonus
+            + two_side_bonus
+        )
+
+    @staticmethod
+    def _paper_photo_score(image: Image.Image, face_box: tuple[int, int, int, int] | None) -> float:
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return 0.0
+
+        width, height = image.size
+        if face_box is None:
+            return 0.0
+
+        face_x, face_y, face_w, face_h = face_box
+        face_cx = face_x + face_w / 2
+        face_cy = face_y + face_h / 2
+
+        scale = 700 / max(width, height)
+        resized = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+        rgb = np.asarray(resized)
+        hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 35, 115)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        scaled_face = (
+            face_x * scale,
+            face_y * scale,
+            face_w * scale,
+            face_h * scale,
+        )
+        scaled_face_cx = face_cx * scale
+        scaled_face_cy = face_cy * scale
+        image_area = resized.width * resized.height
+        best = 0.0
+
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter <= 0:
+                continue
+            approx = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+            if len(approx) != 4 or not cv2.isContourConvex(approx):
+                continue
+
+            area = abs(cv2.contourArea(approx))
+            area_ratio = area / max(image_area, 1)
+            if area_ratio < 0.1 or area_ratio > 0.86:
+                continue
+
+            x, y, w, h = cv2.boundingRect(approx)
+            if not (x <= scaled_face_cx <= x + w and y <= scaled_face_cy <= y + h):
+                continue
+            if x <= 2 or y <= 2 or x + w >= resized.width - 2 or y + h >= resized.height - 2:
+                continue
+
+            aspect = w / max(h, 1)
+            if not (0.42 <= aspect <= 2.15):
+                continue
+
+            face_x_s, face_y_s, face_w_s, face_h_s = scaled_face
+            face_area_ratio = (face_w_s * face_h_s) / max(w * h, 1)
+            if face_area_ratio < 0.035 or face_area_ratio > 0.62:
+                continue
+
+            rectangularity = area / max(w * h, 1)
+            if rectangularity < 0.68:
+                continue
+
+            roi_hsv = hsv[y : y + h, x : x + w]
+            roi_rgb = rgb[y : y + h, x : x + w]
+            if roi_hsv.size == 0 or roi_rgb.size == 0:
+                continue
+
+            paper_mask = ((roi_hsv[:, :, 1] < 72) & (roi_hsv[:, :, 2] > 130)).astype("uint8")
+            local_face_left = max(0, int(face_x_s - x - face_w_s * 0.14))
+            local_face_top = max(0, int(face_y_s - y - face_h_s * 0.14))
+            local_face_right = min(w, int(face_x_s - x + face_w_s * 1.14))
+            local_face_bottom = min(h, int(face_y_s - y + face_h_s * 1.14))
+            paper_context = paper_mask.copy()
+            paper_context[local_face_top:local_face_bottom, local_face_left:local_face_right] = 0
+            paper_ratio = float(paper_context.mean())
+
+            border = PassiveSpoofAnalyzer._border_pixels(roi_rgb)
+            border_light = float((border > 135).mean()) if border.size else 0.0
+            edge_density = float((edges[y : y + h, x : x + w] > 0).mean())
+            size_score = _clamp((area_ratio - 0.1) / 0.34)
+            face_scale_score = _clamp((face_area_ratio - 0.035) / 0.18)
+            score = _clamp(
+                rectangularity * 0.24
+                + paper_ratio * 0.34
+                + border_light * 0.18
+                + size_score * 0.12
+                + face_scale_score * 0.08
+                + edge_density * 2.0 * 0.04
+            )
+            best = max(best, score)
+
+        # Contour detection misses sheets whose outline is broken by gripping
+        # fingers. A two-hand grip at face level with a bright low-saturation
+        # surround is strong held-paper evidence on its own: in live captures
+        # the smaller skin side stays near zero, while holding a printed photo
+        # puts hands on both sides of the displayed face.
+        scaled_height, scaled_width = hsv.shape[:2]
+        fx, fy = scaled_face[0], scaled_face[1]
+        fw, fh = scaled_face[2], scaled_face[3]
+        # A held printed photo is shot at arm's length, so the displayed face is
+        # small in the frame. A real bare-shouldered selfie has a large face with
+        # skin (shoulders) on both sides against a bright wall, which would
+        # otherwise read as a held sheet. Only apply the grip heuristic when the
+        # face is small enough to be a held photo.
+        face_width_ratio = fw / max(scaled_width, 1)
+        if face_width_ratio >= 0.22:
+            return best
+        skin_mask = (
+            (hsv[:, :, 0] <= 24)
+            & (hsv[:, :, 1] >= 34)
+            & (hsv[:, :, 1] <= 175)
+            & (hsv[:, :, 2] >= 78)
+            & (hsv[:, :, 2] <= 245)
+        ).astype("uint8")
+        paper_like_mask = ((hsv[:, :, 1] < 72) & (hsv[:, :, 2] > 130)).astype("uint8")
+        gy1 = max(0, int(fy - fh * 0.3))
+        gy2 = min(scaled_height, int(fy + fh * 1.4))
+        grip_left = skin_mask[gy1:gy2, max(0, int(fx - fw * 2.3)) : max(0, int(fx - fw * 1.0))]
+        grip_right = skin_mask[gy1:gy2, min(scaled_width, int(fx + fw * 2.0)) : min(scaled_width, int(fx + fw * 3.3))]
+        left_grip = float(grip_left.mean()) if grip_left.size else 0.0
+        right_grip = float(grip_right.mean()) if grip_right.size else 0.0
+        ring = paper_like_mask[
+            max(0, int(fy - fh * 0.8)) : min(scaled_height, int(fy + fh * 1.9)),
+            max(0, int(fx - fw * 0.9)) : min(scaled_width, int(fx + fw * 1.9)),
+        ]
+        ring_paper_ratio = float(ring.mean()) if ring.size else 0.0
+        grip_skin = min(left_grip, right_grip)
+        if grip_skin >= 0.22 and ring_paper_ratio >= 0.4:
+            best = max(best, _clamp(0.3 + grip_skin * 0.6 + ring_paper_ratio * 0.2))
+
+        return best
+
+    @staticmethod
     def _border_pixels(region: Any) -> Any:
         import numpy as np
 
@@ -559,8 +900,13 @@ class OnnxAntiSpoofModel:
 
     @staticmethod
     def _family_for(model_path: Path) -> str:
+        normalized = model_path.stem.lower().replace("-", "_")
         if model_path.name == "best_model_quantized.onnx":
             return "facenox_minifas_v2_se"
+        if "deeppix" in normalized or "deep_pix" in normalized:
+            return "deeppixbis_pad"
+        if "cdcn" in normalized:
+            return "cdcn_pad"
         if model_path.stem.startswith("MiniFASNet"):
             return "silent_face_anti_spoofing_minifas"
         return "onnx_anti_spoof"

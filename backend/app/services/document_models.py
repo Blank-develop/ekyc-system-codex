@@ -108,6 +108,114 @@ class HeuristicDocumentLivenessModel:
         return _clamp(edge_mean * 0.55 + high_freq * 0.45)
 
 
+class HeuristicPrintCopyModel:
+    """Printed document copy detector.
+
+    Looks for a passport/ID image placed inside a larger paper sheet, plus
+    print-like texture cues. This targets common presentation attacks where a
+    copied passport is printed on office paper and re-photographed.
+    """
+
+    model_id = "heuristic_print_copy_v1"
+    family: ModelFamily = "document_liveness"
+
+    def analyze(self, payload: DocumentModelInput) -> DocumentModelFinding:
+        nested_sheet = self._nested_sheet_score(payload.image)
+        halftone = self._halftone_texture_score(payload.image)
+        flat_paper = self._flat_paper_score(payload.image)
+        score = _clamp(nested_sheet * 0.72 + halftone * 0.18 + flat_paper * 0.1)
+        confidence = _clamp(0.58 + min(payload.image.width * payload.image.height / 3_000_000, 0.28))
+        reason = (
+            "printed-copy cues "
+            f"(nested_sheet={nested_sheet:.2f}, halftone={halftone:.2f}, flat_paper={flat_paper:.2f})"
+        )
+        return DocumentModelFinding(
+            model_id=self.model_id,
+            family=self.family,
+            score=score,
+            confidence=confidence,
+            version="paper-print-heuristic-1",
+            reason=reason,
+        )
+
+    @staticmethod
+    def _nested_sheet_score(image: Image.Image) -> float:
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return 0.0
+
+        width, height = image.size
+        scale = 760 / max(width, height)
+        resized = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+        rgb = np.asarray(resized)
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 36, 118)
+        contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        center_x = resized.width / 2
+        center_y = resized.height / 2
+        image_area = resized.width * resized.height
+        center_rects: list[tuple[float, float]] = []
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter <= 0:
+                continue
+            approx = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+            if len(approx) != 4 or not cv2.isContourConvex(approx):
+                continue
+            area = abs(cv2.contourArea(approx))
+            area_ratio = area / max(image_area, 1)
+            if area_ratio < 0.12 or area_ratio > 0.94:
+                continue
+            x, y, w, h = cv2.boundingRect(approx)
+            if not (x <= center_x <= x + w and y <= center_y <= y + h):
+                continue
+            rectangularity = area / max(w * h, 1)
+            aspect = w / max(h, 1)
+            if rectangularity < 0.58 or not (0.55 <= aspect <= 2.2):
+                continue
+            center_rects.append((area_ratio, rectangularity))
+
+        if len(center_rects) < 2:
+            if not center_rects:
+                return 0.0
+            main_area, main_rectangularity = max(center_rects)
+            # A genuine camera capture usually fills most of the frame with
+            # the document. A printed copy often appears as a smaller document
+            # rectangle sitting inside a larger paper sheet.
+            return _clamp((0.62 - main_area) / 0.36 * main_rectangularity)
+        center_rects.sort(reverse=True)
+        outer_area, outer_rectangularity = center_rects[0]
+        inner_area, inner_rectangularity = center_rects[1]
+        separation = outer_area - inner_area
+        if separation < 0.12:
+            return _clamp((0.62 - outer_area) / 0.36 * outer_rectangularity)
+        return _clamp(0.55 + separation * 0.75 + min(outer_rectangularity, inner_rectangularity) * 0.18)
+
+    @staticmethod
+    def _halftone_texture_score(image: Image.Image) -> float:
+        gray = ImageOps.grayscale(image).resize((512, max(1, round(512 / (image.width / max(image.height, 1))))))
+        blurred = gray.filter(ImageFilter.GaussianBlur(1.0))
+        residual = ImageChops.difference(gray, blurred)
+        residual_stat = ImageStat.Stat(residual)
+        edge_mean = ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES)).mean[0] / 255
+        return _clamp((residual_stat.stddev[0] / 22) * 0.72 + edge_mean * 0.28)
+
+    @staticmethod
+    def _flat_paper_score(image: Image.Image) -> float:
+        hsv = image.convert("HSV").resize((320, max(1, round(320 / (image.width / max(image.height, 1))))))
+        pixels = list(hsv.getdata())
+        if not pixels:
+            return 0.0
+        bright_low_sat = sum(1 for _, sat, val in pixels if sat < 32 and val > 218) / len(pixels)
+        gray = ImageOps.grayscale(image)
+        contrast = ImageStat.Stat(gray).stddev[0]
+        return _clamp(bright_low_sat * 0.72 + ((42 - contrast) / 42) * 0.28)
+
+
 class HeuristicTamperModel:
     """Baseline tamper finding adapter for edited-region risk."""
 
@@ -148,6 +256,16 @@ class HeuristicPortraitSubstitutionModel:
     family: ModelFamily = "tamper"
 
     def analyze(self, payload: DocumentModelInput) -> DocumentModelFinding:
+        if payload.checks.get("document_type") != "passport":
+            return DocumentModelFinding(
+                model_id=self.model_id,
+                family=self.family,
+                score=0.0,
+                confidence=0.0,
+                version="passport-layout-heuristic-1",
+                reason="passport portrait substitution heuristic skipped for non-passport document",
+            )
+
         photo = self._region_stats(self._crop(payload.image, (0.055, 0.22, 0.32, 0.735)))
         body = self._region_stats(self._crop(payload.image, (0.35, 0.2, 0.94, 0.7)))
 
@@ -347,6 +465,7 @@ class DocumentFraudModelEnsemble:
     def __init__(self, models: list[DocumentFraudModel] | None = None) -> None:
         self.models = models or [
             HeuristicDocumentLivenessModel(),
+            HeuristicPrintCopyModel(),
             HeuristicTamperModel(),
             HeuristicPortraitSubstitutionModel(),
             OptionalOnnxDocumentFraudModel(),
@@ -401,9 +520,18 @@ class DocumentFraudModelEnsemble:
             (finding.score for finding in findings if finding.model_id == "heuristic_portrait_substitution_v1"),
             default=0.0,
         )
-        if portrait_score >= 0.48:
+        print_copy_score = max(
+            (finding.score for finding in findings if finding.model_id == "heuristic_print_copy_v1"),
+            default=0.0,
+        )
+        if print_copy_score >= 0.62:
+            signals.append(_signal("DOCUMENT_PRINT_COPY_RISK_HIGH", "Document appears to be a printed copy on paper.", "high", print_copy_score))
+        elif print_copy_score >= 0.42:
+            signals.append(_signal("DOCUMENT_PRINT_COPY_RISK_MEDIUM", "Document may be a printed paper copy.", "medium", print_copy_score))
+
+        if portrait_score >= 0.55:
             signals.append(_signal("DOCUMENT_FACE_SUBSTITUTION_RISK_HIGH", "Passport portrait area is inconsistent with the rest of the document.", "high", portrait_score))
-        elif portrait_score >= 0.34:
+        elif portrait_score >= 0.38:
             signals.append(_signal("DOCUMENT_FACE_SUBSTITUTION_RISK_MEDIUM", "Passport portrait area may have been substituted or edited.", "medium", portrait_score))
 
         if recapture >= 0.76 and confidence >= 0.55:

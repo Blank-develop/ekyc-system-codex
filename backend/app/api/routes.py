@@ -18,14 +18,17 @@ from app.models.schemas import (
     VerificationResult,
 )
 from app.services.face_biometrics import OpenCvFaceRecognizer
-from app.services.fraud import PassportFraudAnalyzer
+from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
 from app.services.selfie import SelfieAnalyzer
 from app.services.session_store import store
 
 router = APIRouter()
 settings = get_settings()
-analyzer = PassportFraudAnalyzer()
+document_analyzers = {
+    "passport": PassportFraudAnalyzer(),
+    "lao_id_card": LaoIdCardFraudAnalyzer(),
+}
 face_recognizer = OpenCvFaceRecognizer()
 selfie_analyzer = SelfieAnalyzer(face_recognizer=face_recognizer)
 
@@ -54,6 +57,80 @@ def _signal(code: str, label: str, severity: str, score: float) -> FraudSignal:
     return FraudSignal(code=code, label=label, severity=severity, score=max(0.0, min(score, 1.0)))
 
 
+def _float_check(checks: dict[str, object], key: str) -> float:
+    value = checks.get(key)
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _has_strong_active_replay_evidence(checks: dict[str, object], risk: float) -> bool:
+    screen_frame_score = _float_check(checks, "passive_spoof_screen_frame_score")
+    display_surface_score = _float_check(checks, "passive_spoof_display_surface_score")
+    paper_photo_score = _float_check(checks, "passive_spoof_paper_photo_score")
+    model_risk = _float_check(checks, "passive_spoof_model_risk")
+    heuristic_risk = _float_check(checks, "passive_spoof_heuristic_risk")
+    return (
+        screen_frame_score >= 0.62
+        or paper_photo_score >= 0.56
+        or (risk >= 0.5 and screen_frame_score >= 0.42)
+        or (risk >= 0.5 and paper_photo_score >= 0.38)
+        or (risk >= 0.55 and display_surface_score >= 0.58 and screen_frame_score >= 0.28)
+        or (
+            risk >= settings.max_active_liveness_spoof_risk
+            and model_risk >= 0.82
+            and heuristic_risk >= 0.24
+            and (
+                screen_frame_score >= 0.28
+                or paper_photo_score >= 0.24
+                or (display_surface_score >= 0.62 and screen_frame_score >= 0.22)
+            )
+        )
+    )
+
+
+def active_liveness_quality_spoof_signals(
+    face_width_ratios: list[float],
+    model_risks: list[float],
+    min_face_width_ratio: float = 0.22,
+) -> tuple[list[FraudSignal], dict[str, object]]:
+    """Face-size and recurring-model spoof signals for an active-liveness burst.
+
+    PAD models are unreliable on small/distant faces, and a printed photo held
+    at arm's length reads as a small face, so small frames are excluded from the
+    model vote. A burst that is mostly small faces is a move-closer hard fail.
+    A single high-risk frame never blocks on its own; the model must agree
+    across the burst (recurrence) before it hard-fails a real user.
+    """
+    frame_count = len(model_risks)
+    adequate_indices = [i for i, ratio in enumerate(face_width_ratios) if ratio >= min_face_width_ratio]
+    small_face_count = frame_count - len(adequate_indices)
+    reliable_model_risks = [model_risks[i] for i in adequate_indices] or model_risks
+    model_high_count = sum(1 for risk in reliable_model_risks if risk >= 0.72)
+    model_spoof_recurring = model_high_count >= 2 or (len(reliable_model_risks) <= 2 and model_high_count >= 1)
+
+    signals: list[FraudSignal] = []
+    if frame_count and small_face_count * 2 > frame_count:
+        signals.append(_signal("ACTIVE_LIVENESS_FACE_TOO_SMALL", "You are a bit too far from the camera; move your face closer until it fills the oval, then repeat the action.", "high", 0.7))
+    if model_spoof_recurring:
+        signals.append(_signal("ACTIVE_LIVENESS_MODEL_SPOOF_HIGH", "Anti-spoofing model detected recurring screen/photo spoof risk during active liveness.", "high", max(reliable_model_risks, default=0.0)))
+
+    diagnostics = {
+        "active_liveness_model_high_count": model_high_count,
+        "active_liveness_model_spoof_recurring": model_spoof_recurring,
+        "active_liveness_small_face_count": small_face_count,
+        "active_liveness_reliable_frame_count": len(reliable_model_risks),
+    }
+    return signals, diagnostics
+
+
 def warm_face_login_dependencies() -> None:
     face_recognizer.warm_up()
     selfie_analyzer.passive_spoof.warm_up()
@@ -75,12 +152,16 @@ async def upload_document(
     session_id: UUID,
     file: UploadFile = File(...),
     ocr_text: str | None = Form(default=None),
+    document_type: str = Form(default="passport"),
 ) -> VerificationResult:
     started_at = time.perf_counter()
     _get_session(session_id)
+    analyzer = document_analyzers.get(document_type)
+    if analyzer is None:
+        raise HTTPException(status_code=400, detail="Unsupported document type. Use passport or lao_id_card.")
     content = await _read_upload(file)
     analysis_started_at = time.perf_counter()
-    analysis = await run_in_threadpool(analyzer.analyze, content, file.filename or "passport-upload", ocr_text)
+    analysis = await run_in_threadpool(analyzer.analyze, content, file.filename or f"{document_type}-upload", ocr_text)
     analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
     face_started_at = time.perf_counter()
     face_result = await run_in_threadpool(face_recognizer.extract, content, "document")
@@ -88,6 +169,7 @@ async def upload_document(
     analysis.checks.update(
         {
             "document_upload_kb": round(len(content) / 1024, 1),
+            "document_type": document_type,
             "document_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
             "document_analysis_ms": analysis_elapsed_ms,
             "document_face_extract_ms": face_elapsed_ms,
@@ -106,33 +188,170 @@ async def upload_document(
 
 @router.post("/verifications/{session_id}/challenge", response_model=VerificationResult)
 async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest) -> VerificationResult:
-    _get_session(session_id)
+    session = _get_session(session_id)
+    if payload.challenge_id in {challenge.id for challenge in session.active_challenges}:
+        raise HTTPException(status_code=409, detail="Active liveness requires server-verified face evidence.")
     return store.complete_challenge(session_id, payload)
+
+
+@router.post("/verifications/{session_id}/active-liveness", response_model=VerificationResult)
+async def complete_active_liveness(
+    session_id: UUID,
+    challenge_id: str = Form(...),
+    file: UploadFile | None = File(default=None),
+    frames: list[UploadFile] | None = File(default=None),
+) -> VerificationResult:
+    session = _get_session(session_id)
+    if session.document.status != "passed":
+        raise HTTPException(status_code=409, detail="Document must pass before active liveness.")
+    if challenge_id not in {challenge.id for challenge in session.active_challenges}:
+        raise HTTPException(status_code=400, detail="Unknown active liveness challenge.")
+
+    started_at = time.perf_counter()
+    liveness_files = frames or ([file] if file else [])
+    if not liveness_files:
+        raise HTTPException(status_code=400, detail="At least one active liveness frame is required.")
+    liveness_files = liveness_files[:3]
+    contents = [await _read_upload(item) for item in liveness_files]
+
+    face_started_at = time.perf_counter()
+    face_results = [
+        await run_in_threadpool(face_recognizer.extract, content, "active_liveness")
+        for content in contents
+    ]
+    face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
+
+    passive_started_at = time.perf_counter()
+    passive_results = [
+        await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
+        for content, face_result in zip(contents, face_results, strict=False)
+    ]
+    passive_elapsed_ms = round((time.perf_counter() - passive_started_at) * 1000, 2)
+
+    representative_index, face_result = max(
+        enumerate(face_results),
+        key=lambda item: item[1].face_confidence or 0,
+    )
+    passive_result = passive_results[representative_index]
+    signals = [*face_result.signals]
+    usable_face_count = sum(1 for result in face_results if result.embedding is not None)
+    max_face_count = max(int(result.checks.get("active_liveness_face_count") or 0) for result in face_results)
+    if usable_face_count == 0:
+        signals.append(_signal("ACTIVE_LIVENESS_FACE_NOT_FOUND", "No live face was detected during active liveness.", "high", 0.92))
+    if face_result.face_confidence is not None and face_result.face_confidence < 0.82:
+        signals.append(_signal("ACTIVE_LIVENESS_FACE_CONFIDENCE_LOW", "Active liveness face confidence is too low.", "high", 0.86))
+    if max_face_count > 1:
+        signals.append(_signal("ACTIVE_LIVENESS_MULTIPLE_FACES", "Multiple faces detected during active liveness.", "high", 0.86))
+
+    face_width_ratios = [
+        (_float_check(result.checks, "active_liveness_face_box_width")
+         / max(_float_check(result.checks, "active_liveness_image_width"), 1.0))
+        for result in face_results
+    ]
+    model_risks = [_float_check(result.checks, "passive_spoof_model_risk") for result in passive_results]
+    quality_signals, quality_diagnostics = active_liveness_quality_spoof_signals(face_width_ratios, model_risks)
+    signals.extend(quality_signals)
+
+    risks = [result.risk for result in passive_results]
+    screen_frame_scores = [_float_check(result.checks, "passive_spoof_screen_frame_score") for result in passive_results]
+    display_surface_scores = [_float_check(result.checks, "passive_spoof_display_surface_score") for result in passive_results]
+    paper_photo_scores = [_float_check(result.checks, "passive_spoof_paper_photo_score") for result in passive_results]
+    heuristic_risks = [_float_check(result.checks, "passive_spoof_heuristic_risk") for result in passive_results]
+    max_risk = max(risks, default=0.0)
+    mean_risk = sum(risks) / len(risks) if risks else 0.0
+    screen_frame_score = max(screen_frame_scores, default=0.0)
+    display_surface_score = max(display_surface_scores, default=0.0)
+    paper_photo_score = max(paper_photo_scores, default=0.0)
+    model_risk = max(model_risks, default=0.0)
+    heuristic_risk = max(heuristic_risks, default=0.0)
+    strong_replay_evidence = any(
+        _has_strong_active_replay_evidence(result.checks, result.risk)
+        for result in passive_results
+    )
+    display_like_frame_count = sum(
+        1
+        for screen_score, display_score, model_score, heuristic_score in zip(
+            screen_frame_scores,
+            display_surface_scores,
+            model_risks,
+            heuristic_risks,
+            strict=False,
+        )
+        if (
+            screen_score >= 0.45
+            or (display_score >= 0.58 and screen_score >= 0.28)
+            or (display_score >= 0.62 and screen_score >= 0.22 and model_score >= 0.82 and heuristic_score >= 0.3)
+        )
+    )
+    recurring_display_surface = len(passive_results) >= 3 and display_like_frame_count / len(passive_results) >= 0.67
+    strong_replay_evidence = strong_replay_evidence or recurring_display_surface
+    if strong_replay_evidence:
+        signals.append(_signal("ACTIVE_LIVENESS_REPLAY_DETECTED", "Possible screen, photo, or replay attack detected during active liveness.", "high", max_risk))
+
+    high_codes = {signal.code for signal in signals if signal.severity == "high"}
+    passed = not high_codes
+    checks = {
+        "active_liveness_challenge_id": challenge_id,
+        "active_liveness_upload_kb": round(sum(len(content) for content in contents) / 1024, 1),
+        "active_liveness_upload_frame_count": len(contents),
+        "active_liveness_burst_mode": len(contents) > 1,
+        "active_liveness_representative_frame": representative_index,
+        "active_liveness_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        "active_liveness_face_extract_ms": face_elapsed_ms,
+        "active_liveness_passive_liveness_ms": passive_elapsed_ms,
+        "active_liveness_passive_liveness_risk": round(max_risk, 3),
+        "active_liveness_passive_liveness_mean_risk": round(mean_risk, 3),
+        "active_liveness_passive_liveness_passed": all(result.passed for result in passive_results),
+        "active_liveness_screen_frame_score": round(screen_frame_score, 3),
+        "active_liveness_display_surface_score": round(display_surface_score, 3),
+        "active_liveness_paper_photo_score": round(paper_photo_score, 3),
+        "active_liveness_model_spoof_risk": round(model_risk, 3),
+        **quality_diagnostics,
+        "active_liveness_heuristic_spoof_risk": round(heuristic_risk, 3),
+        "active_liveness_display_like_frame_count": display_like_frame_count,
+        "active_liveness_recurring_display_surface": recurring_display_surface,
+        "active_liveness_strong_replay_evidence": strong_replay_evidence,
+        **face_result.checks,
+        **passive_result.checks,
+    }
+    return store.complete_active_challenge_with_evidence(
+        session_id,
+        CompleteChallengeRequest(challenge_id=challenge_id, passed=passed),
+        checks,
+        signals if not passed else [],
+    )
 
 
 @router.post("/verifications/{session_id}/selfie", response_model=VerificationResult)
 async def analyze_selfie(
     session_id: UUID,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    frames: list[UploadFile] | None = File(default=None),
 ) -> VerificationResult:
     started_at = time.perf_counter()
     _get_session(session_id)
-    content = await _read_upload(file)
+    selfie_files = frames or ([file] if file else [])
+    if not selfie_files:
+        raise HTTPException(status_code=400, detail="At least one selfie frame is required.")
+    selfie_files = selfie_files[:12]
+    contents = [await _read_upload(item) for item in selfie_files]
+    filenames = [item.filename or f"selfie-frame-{index}.jpg" for index, item in enumerate(selfie_files)]
     reference_embedding = store.get_document_face_embedding(session_id)
     analysis_started_at = time.perf_counter()
-    analysis = await run_in_threadpool(
-        selfie_analyzer.analyze,
-        content,
-        file.filename or "selfie-capture.jpg",
-        reference_embedding,
-    )
+    if len(contents) > 1:
+        analysis = await run_in_threadpool(selfie_analyzer.analyze_frames, contents, filenames, reference_embedding)
+    else:
+        analysis = await run_in_threadpool(selfie_analyzer.analyze, contents[0], filenames[0], reference_embedding)
     analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
+    representative_index = int(analysis.selfie_checks.get("selfie_burst_representative_frame") or 0)
+    representative_content = contents[min(max(representative_index, 0), len(contents) - 1)]
     face_started_at = time.perf_counter()
-    selfie_face = await run_in_threadpool(face_recognizer.extract, content, "selfie")
+    selfie_face = await run_in_threadpool(face_recognizer.extract, representative_content, "selfie")
     face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
     analysis.selfie_checks.update(
         {
-            "selfie_upload_kb": round(len(content) / 1024, 1),
+            "selfie_upload_kb": round(sum(len(content) for content in contents) / 1024, 1),
+            "selfie_upload_frame_count": len(contents),
             "selfie_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
             "selfie_analysis_ms": analysis_elapsed_ms,
             "selfie_face_extract_ms": face_elapsed_ms,

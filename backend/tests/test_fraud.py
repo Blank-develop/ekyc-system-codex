@@ -4,8 +4,9 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFilter
 
+from app.core.config import get_settings
 from app.services.document_models import DocumentFraudModelEnsemble, DocumentModelFinding, DocumentModelInput
-from app.services.fraud import MrzAnalyzer, PassportFraudAnalyzer
+from app.services.fraud import LaoIdCardFraudAnalyzer, MrzAnalyzer, PassportFraudAnalyzer
 
 VALID_TD3_MRZ = "\n".join(
     [
@@ -35,6 +36,41 @@ def _passport_like_image() -> bytes:
     draw.rectangle((820, 180, 1040, 440), outline="black", width=4)
     for y in range(170, 600, 44):
         draw.text((150, y), "PASSPORT SAMPLE FIELD DATA 123456789", fill="black")
+    return _jpeg_bytes(image)
+
+
+def _printed_passport_on_paper_image() -> bytes:
+    passport = Image.open(BytesIO(_passport_like_image())).convert("RGB").resize((880, 590))
+    paper = Image.new("RGB", (1300, 950), (247, 246, 240))
+    draw = ImageDraw.Draw(paper)
+    draw.rectangle((80, 70, 1220, 880), fill=(250, 249, 244), outline=(215, 213, 204), width=4)
+
+    # Simulate print-copy halftone dots over the copied passport area.
+    for y in range(0, passport.height, 10):
+        for x in range(0, passport.width, 10):
+            color = (185, 185, 180) if (x // 10 + y // 10) % 2 == 0 else (224, 224, 218)
+            ImageDraw.Draw(passport).ellipse((x + 3, y + 3, x + 5, y + 5), fill=color)
+
+    paper.paste(passport, (210, 175))
+    return _jpeg_bytes(paper)
+
+
+def _lao_id_like_image() -> bytes:
+    image = Image.new("RGB", (1200, 760), (238, 235, 220))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((60, 70, 1140, 690), outline=(50, 65, 80), width=7)
+    draw.rectangle((110, 180, 410, 580), outline=(80, 90, 105), width=4)
+    draw.ellipse((180, 235, 340, 420), fill=(198, 142, 105), outline=(70, 48, 42), width=5)
+    draw.rectangle((160, 420, 360, 580), fill=(35, 52, 78))
+    for y, text in [
+        (135, "LAO NATIONAL ID CARD"),
+        (205, "ID NO 123456789012"),
+        (265, "NAME SOMPHET TESTUSER"),
+        (325, "NATIONALITY LAO"),
+        (385, "DATE OF BIRTH 09/11/2001"),
+        (445, "EXPIRY 14/03/2032"),
+    ]:
+        draw.text((480, y), text, fill=(30, 36, 42))
     return _jpeg_bytes(image)
 
 
@@ -78,6 +114,14 @@ def test_passport_like_image_produces_explainable_scores() -> None:
     assert analysis.checks["document_model_available_count"] >= 2
 
 
+def test_printed_passport_on_paper_is_rejected() -> None:
+    analysis = PassportFraudAnalyzer().analyze(_printed_passport_on_paper_image(), "printed-passport-paper.jpg", ocr_text=VALID_TD3_MRZ)
+
+    assert analysis.status == "rejected"
+    assert "DOCUMENT_PRINT_COPY_RISK_HIGH" in {signal.code for signal in analysis.signals}
+    assert analysis.checks["model_heuristic_print_copy_v1_score"] >= 0.62
+
+
 def test_injected_document_model_can_drive_auto_rejection() -> None:
     class HighRiskModel:
         model_id = "test_high_risk_model"
@@ -109,6 +153,29 @@ def test_portrait_substitution_region_is_rejected() -> None:
     assert analysis.checks["model_heuristic_portrait_substitution_v1_score"] >= 0.48
 
 
+def test_borderline_portrait_substitution_score_is_not_auto_rejected() -> None:
+    class BorderlinePortraitModel:
+        model_id = "heuristic_portrait_substitution_v1"
+        family = "tamper"
+
+        def analyze(self, payload: DocumentModelInput) -> DocumentModelFinding:
+            return DocumentModelFinding(
+                model_id=self.model_id,
+                family="tamper",
+                score=0.5,
+                confidence=0.85,
+                version="test",
+                reason="unit-test borderline portrait mismatch",
+            )
+
+    analyzer = PassportFraudAnalyzer(model_ensemble=DocumentFraudModelEnsemble([BorderlinePortraitModel()]))
+    analysis = analyzer.analyze(_passport_like_image(), "borderline-passport.jpg", ocr_text=VALID_TD3_MRZ)
+
+    assert analysis.status == "passed"
+    assert "DOCUMENT_FACE_SUBSTITUTION_RISK_HIGH" not in {signal.code for signal in analysis.signals}
+    assert "DOCUMENT_FACE_SUBSTITUTION_RISK_MEDIUM" in {signal.code for signal in analysis.signals}
+
+
 def test_soft_but_structured_passport_image_is_not_hard_blur_rejected() -> None:
     image = Image.open(BytesIO(_passport_like_image())).filter(ImageFilter.GaussianBlur(radius=0.7))
     analysis = PassportFraudAnalyzer().analyze(_jpeg_bytes(image), "soft-passport.jpg", ocr_text=VALID_TD3_MRZ)
@@ -134,6 +201,181 @@ def test_non_passport_photo_without_mrz_is_rejected() -> None:
 
     assert analysis.status == "rejected"
     assert "MRZ_NOT_READ" in {signal.code for signal in analysis.signals}
+
+
+def test_passport_with_strong_visible_fields_can_continue_when_mrz_ocr_is_weak() -> None:
+    noisy_sideways_passport_ocr = "\n".join(
+        [
+            "RDP LAO LAO PDR",
+            "Passport No PA0499974",
+            "SENGVILAY",
+            "KHATTHAPHONE",
+            "Nationality LAO",
+            "31 MAR 1998",
+            "04 JUN 2035",
+            "POLAOSRRO ST",
+            "PDMELMGGMMATTRAPHONE<<<",
+            "SPPHBPNOPROSSMSS060K2<<",
+        ]
+    )
+
+    analysis = PassportFraudAnalyzer().analyze(_passport_like_image(), "sideways-real-passport.jpg", ocr_text=noisy_sideways_passport_ocr)
+
+    assert analysis.status == "passed"
+    assert "MRZ_NOT_READ" not in {signal.code for signal in analysis.signals}
+    assert "MRZ_NOT_CONFIDENT" in {signal.code for signal in analysis.signals}
+    assert analysis.checks["mrz_found"] is False
+    assert analysis.checks["passport_text_evidence_score"] >= 0.65
+
+
+def test_lao_id_card_like_image_can_pass_without_mrz() -> None:
+    ocr_text = "\n".join(
+        [
+            "LAO NATIONAL ID CARD",
+            "ID NO 123456789012",
+            "NAME SOMPHET TESTUSER",
+            "NATIONALITY LAO",
+            "DATE OF BIRTH 09/11/2001",
+            "EXPIRY 14/03/2032",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+
+    assert analysis.status == "passed"
+    assert analysis.ocr.document_type == "lao_id_card"
+    assert analysis.ocr.id_number == "123456789012"
+    assert analysis.ocr.nationality == "LAO"
+    assert analysis.ocr.mrz_valid is None
+    assert "MRZ_NOT_READ" not in {signal.code for signal in analysis.signals}
+
+
+def test_lao_id_card_rejects_when_id_number_is_missing() -> None:
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text="LAO NATIONAL ID CARD NAME SOMPHET")
+
+    assert analysis.status == "rejected"
+    assert "LAO_ID_NUMBER_NOT_READ" in {signal.code for signal in analysis.signals}
+
+
+def test_lao_id_card_uses_latest_future_date_as_expiry() -> None:
+    ocr_text = "\n".join(
+        [
+            "LAO NATIONAL ID CARD",
+            "NO 100187899",
+            "01 / 09 / 2001",
+            "24 / O5 / 2023",
+            "24 / O5 / 202B",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+
+    assert analysis.ocr.expiry_date is not None
+    assert str(analysis.ocr.expiry_date) == "2028-05-24"
+    assert "LAO_ID_EXPIRED" not in {signal.code for signal in analysis.signals}
+
+
+def test_lao_id_card_extracts_name_from_split_english_labels() -> None:
+    ocr_text = "\n".join(
+        [
+            "LAO PEOPLE DEMOCRATIC REPUBLIC",
+            "ID NO 100187899",
+            "Nom / Surname",
+            "SOUKSAVANH",
+            "Prenoms / Given names",
+            "PELAY",
+            "Date of birth 09/11/2001",
+            "Date of expiry 24/05/2028",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+
+    assert analysis.ocr.full_name == "SOUKSAVANH PELAY"
+    assert str(analysis.ocr.expiry_date) == "2028-05-24"
+    assert analysis.ocr.extracted_fields["full_name"] == "SOUKSAVANH PELAY"
+    assert analysis.ocr.extracted_fields["expiry_date"] == "2028-05-24"
+
+
+def test_lao_id_card_extracts_lao_script_name_when_ocr_provides_it() -> None:
+    ocr_text = "\n".join(
+        [
+            "ເລກທີ 10-0187899",
+            "ຊື່ແລະນາມສະກຸນ ສົມໄຊ ສີສຸວັນ",
+            "ວັນເກີດ 01/09/2001",
+            "ບັດໝົດອາຍຸ 24/05/2028",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+
+    assert analysis.ocr.full_name == "ສົມໄຊ ສີສຸວັນ"
+    assert str(analysis.ocr.expiry_date) == "2028-05-24"
+
+
+def test_lao_id_card_prefers_surya_ocr_when_enabled(monkeypatch) -> None:
+    class FakeSuryaOcrExtractor:
+        def __init__(self, enabled: bool) -> None:
+            self.enabled = enabled
+
+        def extract(self, context) -> str:
+            context.checks["surya_ocr_available"] = self.enabled
+            return "\n".join(
+                [
+                    "Nom / Surname",
+                    "SOUKSAVANH",
+                    "Prenoms / Given names",
+                    "PELAY",
+                    "NO 100187899",
+                    "24/05/2028",
+                ]
+            )
+
+    monkeypatch.setenv("LALIGENCE_LAO_ID_OCR_ENGINE", "surya")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.services.fraud.SuryaOcrExtractor", FakeSuryaOcrExtractor)
+
+    try:
+        analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg")
+
+        assert analysis.checks["ocr_engine"] == "surya"
+        assert analysis.ocr.full_name == "SOUKSAVANH PELAY"
+        assert str(analysis.ocr.expiry_date) == "2028-05-24"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_lao_id_card_does_not_treat_issue_date_as_expiry() -> None:
+    ocr_text = "\n".join(
+        [
+            "NO 100187899",
+            "01/09/2001",
+            "24/05/2023",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+    codes = {signal.code for signal in analysis.signals}
+
+    assert analysis.ocr.expiry_date is None
+    assert "LAO_ID_EXPIRED" not in codes
+    assert "LAO_ID_TEXT_WEAK" not in codes
+
+
+def test_lao_id_card_rejects_confident_expired_expiry_date() -> None:
+    ocr_text = "\n".join(
+        [
+            "LAO NATIONAL ID CARD",
+            "NO 100187899",
+            "DATE OF BIRTH 01/09/2001",
+            "EXPIRY 24/05/2023",
+        ]
+    )
+
+    analysis = LaoIdCardFraudAnalyzer().analyze(_lao_id_like_image(), "lao-id.jpg", ocr_text=ocr_text)
+
+    assert str(analysis.ocr.expiry_date) == "2023-05-24"
+    assert "LAO_ID_EXPIRED" in {signal.code for signal in analysis.signals}
 
 
 def test_mrz_check_digit_validation_for_td3() -> None:
@@ -181,6 +423,39 @@ def test_mrz_parser_recovers_short_lao_passport_ocr_lines() -> None:
     assert str(result.expiry_date) == "2032-03-14"
 
 
+def test_mrz_parser_stitches_split_lao_passport_name_line() -> None:
+    noisy_ocr = "\n".join(
+        [
+            "POLAOSENGVILAY<<KHATTH",
+            "APHONE<<<<<<<<<<<<<<<<",
+            "2404999747009803318M3506042<<<",
+        ]
+    )
+
+    result = MrzAnalyzer().analyze(_context_stub(), ocr_text=noisy_ocr)
+
+    assert result.mrz_valid is True
+    assert result.passport_number == "PA0499974"
+    assert result.full_name == "KHATTHAPHONE SENGVILAY"
+    assert str(result.expiry_date) == "2035-06-04"
+
+
+def test_mrz_parser_recovers_compressed_lao_passport_digit_line() -> None:
+    noisy_ocr = "\n".join(
+        [
+            "P<LAOSENGVILAY<<KHATTHAPHONE<X<<<<<<<<<<<<<<",
+            "494999747LA09803318NS506042<<<<",
+        ]
+    )
+
+    result = MrzAnalyzer().analyze(_context_stub(), ocr_text=noisy_ocr)
+
+    assert result.mrz_valid is True
+    assert result.passport_number == "PA0499974"
+    assert result.full_name == "KHATTHAPHONE SENGVILAY"
+    assert str(result.expiry_date) == "2035-06-04"
+
+
 def test_mrz_name_parser_ignores_ocr_garbage_in_filler() -> None:
     mrz = "\n".join(
         [
@@ -195,6 +470,20 @@ def test_mrz_name_parser_ignores_ocr_garbage_in_filler() -> None:
     assert result.passport_number == "PA0178358"
     assert str(result.date_of_birth) == "1994-08-29"
     assert str(result.expiry_date) == "2027-08-16"
+
+
+def test_mrz_name_parser_drops_trailing_single_character_filler_token() -> None:
+    mrz = "\n".join(
+        [
+            "P<LAOSENGVILAY<<KHATTHAPHONE<X<<<<<<<<<<<<<<",
+            "PA04999747LAO9803318M3506042<<<<<<<<<<<<<<<2",
+        ]
+    )
+
+    result = MrzAnalyzer().analyze(_context_stub(), ocr_text=mrz)
+
+    assert result.mrz_valid is True
+    assert result.full_name == "KHATTHAPHONE SENGVILAY"
 
 
 def _context_stub():

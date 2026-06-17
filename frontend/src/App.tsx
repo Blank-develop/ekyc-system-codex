@@ -24,7 +24,7 @@ import logoUrl from "./assets/logo.png";
 import { ActiveLivenessCapture } from "./components/ActiveLivenessCapture";
 import { CameraCapture } from "./components/CameraCapture";
 import { HandGestureCapture } from "./components/HandGestureCapture";
-import { api, Challenge, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
+import { api, Challenge, DocumentType, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
 import { optimizeImageForUpload } from "./lib/image";
 
 type StepKey = "document" | "liveness" | "gesture" | "selfie" | "result";
@@ -38,6 +38,18 @@ type DocumentNotice = {
 type SelfieNotice = DocumentNotice;
 type EnrollmentNotice = (NonNullable<DocumentNotice> & { profile?: UserProfile }) | null;
 const FACE_MATCH_PASS_THRESHOLD = 0.68;
+const documentLabels: Record<DocumentType, { title: string; short: string; upload: string }> = {
+  passport: {
+    title: "Passport",
+    short: "Passport",
+    upload: "passport"
+  },
+  lao_id_card: {
+    title: "Lao ID card",
+    short: "Lao ID",
+    upload: "Lao ID card"
+  }
+};
 
 const steps: Array<{ key: StepKey; label: string; icon: typeof FileImage }> = [
   { key: "document", label: "Passport", icon: FileImage },
@@ -56,11 +68,14 @@ const createDemoUserId = () => {
 };
 
 const selfieFailureMessage = (codes: string[], matchScore: number) => {
+  if (codes.includes("SELFIE_BURST_FACE_TOO_SMALL") || codes.includes("SELFIE_FACE_TOO_SMALL")) {
+    return "You are a bit too far from the camera. Move your face closer until it fills the yellow circle, then capture again.";
+  }
   if (codes.includes("FACE_MATCH_LOW")) {
-    return `Face match is below the acceptance threshold (${Math.round(matchScore * 100)}%). Try a front-facing selfie with the same person as the passport.`;
+    return `Face match is below the acceptance threshold (${Math.round(matchScore * 100)}%). Try a front-facing selfie with the same person as the document.`;
   }
   if (codes.includes("PASSPORT_FACE_REFERENCE_MISSING")) {
-    return "Passport portrait could not be used as a face reference. Re-upload a clearer passport image.";
+    return "Document portrait could not be used as a face reference. Re-upload a clearer document image.";
   }
   if (codes.some((code) => code.includes("SPOOF") || code.includes("SCREEN"))) {
     return "Possible screen or photo replay detected. Capture a live selfie directly from the camera.";
@@ -96,7 +111,7 @@ const isStepComplete = (step: StepKey, result: VerificationResult | null) => {
 };
 
 const firstBlockedReason = (step: StepKey) => {
-  if (step === "liveness") return "Upload an accepted passport first.";
+  if (step === "liveness") return "Upload an accepted identity document first.";
   if (step === "gesture") return "Complete active face liveness first.";
   if (step === "selfie") return "Complete the hand gesture challenge first.";
   if (step === "result") return "Complete selfie and passive liveness first.";
@@ -110,6 +125,7 @@ export function App() {
   const [activeStep, setActiveStep] = useState<StepKey>("document");
   const [busy, setBusy] = useState(false);
   const [documentBusy, setDocumentBusy] = useState(false);
+  const [documentType, setDocumentType] = useState<DocumentType>("passport");
   const [documentNotice, setDocumentNotice] = useState<DocumentNotice>(null);
   const [selfieBusy, setSelfieBusy] = useState(false);
   const [selfieNotice, setSelfieNotice] = useState<SelfieNotice>(null);
@@ -147,7 +163,7 @@ export function App() {
         setActiveStep(next);
       } else if (next && nextResult.document.status === "rejected") {
         setActiveStep("document");
-        setStatusMessage("Passport rejected. Please upload a clearer or valid passport image.");
+        setStatusMessage(`${documentLabels[documentType].title} rejected. Please upload a clearer or valid document image.`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -168,8 +184,8 @@ export function App() {
         setStatusMessage(successMessage);
         setDocumentNotice({
           type: "success",
-          title: "Passport accepted",
-          message: "Document quality, OCR/MRZ, and fraud checks passed.",
+          title: `${documentLabels[documentType].title} accepted`,
+          message: documentType === "passport" ? "Document quality, OCR/MRZ, and fraud checks passed." : "Document quality, OCR fields, and fraud checks passed.",
           codes: ["DOCUMENT_PASSED"]
         });
         setActiveStep("document");
@@ -179,11 +195,11 @@ export function App() {
       } else {
         const codes = nextResult.document.signals.map((signal) => signal.code);
         setActiveStep("document");
-        setStatusMessage("Passport rejected. Please upload a clearer or valid passport image.");
+        setStatusMessage(`${documentLabels[documentType].title} rejected. Please upload a clearer or valid document image.`);
         setDocumentNotice({
           type: "failure",
-          title: "Passport rejected",
-          message: "Please upload a clearer, valid passport image and try again.",
+          title: `${documentLabels[documentType].title} rejected`,
+          message: `Please upload a clearer, valid ${documentLabels[documentType].upload} image and try again.`,
           codes: codes.length ? codes : ["DOCUMENT_REJECTED"]
         });
       }
@@ -218,13 +234,10 @@ export function App() {
     uploadAndAnalyzeDocument(
       async () => api.uploadDocument(
         sessionId,
-        await optimizeImageForUpload(file, {
-          maxWidth: 1600,
-          quality: 0.88,
-          filename: file.name.replace(/\.[^.]+$/, "") + "-optimized.jpg"
-        })
+        file,
+        documentType
       ),
-      "Passport analyzed"
+      `${documentLabels[documentType].title} analyzed`
     ).finally(() => {
       event.target.value = "";
     });
@@ -239,12 +252,13 @@ export function App() {
       async () => api.uploadDocument(
         sessionId,
         await optimizeImageForUpload(blob, {
-          maxWidth: 1600,
-          quality: 0.88,
-          filename: "passport-capture-optimized.jpg"
-        })
+          maxWidth: 2200,
+          quality: 0.95,
+          filename: `${documentType}-capture-optimized.jpg`
+        }),
+        documentType
       ),
-      "Passport capture analyzed"
+      `${documentLabels[documentType].title} capture analyzed`
     );
   };
 
@@ -253,19 +267,69 @@ export function App() {
     sync(() => api.completeChallenge(sessionId, challenge.id), `${challenge.prompt} confirmed`, next);
   };
 
-  const analyzeSelfie = async (blob: Blob) => {
+  const verifyActiveChallenge = async (challenge: Challenge, allDone: boolean, evidence: Blob | Blob[]) => {
+    if (!sessionId) return false;
+    setBusy(true);
+    setError(null);
+    try {
+      const optimizedEvidence = Array.isArray(evidence)
+        ? await Promise.all(evidence.map((frame, index) => optimizeImageForUpload(frame, {
+            maxWidth: 900,
+            quality: 0.84,
+            filename: `${challenge.id}-active-liveness-${index + 1}.jpg`
+          })))
+        : await optimizeImageForUpload(evidence, {
+            maxWidth: 900,
+            quality: 0.84,
+            filename: `${challenge.id}-active-liveness.jpg`
+          });
+      const nextResult = await api.verifyActiveLiveness(sessionId, challenge.id, optimizedEvidence);
+      setResult(nextResult);
+      const accepted = nextResult.active_challenges.find((item) => item.id === challenge.id)?.passed === true;
+      if (accepted) {
+        setStatusMessage(`${challenge.prompt} confirmed with live-face check`);
+        if (allDone && canAccessStep("gesture", nextResult)) {
+          setActiveStep("gesture");
+        }
+        return true;
+      }
+
+      const codes = nextResult.biometric.active_liveness_signals.map((signal) => signal.code);
+      if (codes.includes("ACTIVE_LIVENESS_REPLAY_DETECTED")) {
+        setStatusMessage("Active liveness needs a clean live-face retry.");
+        setError("Screen or replay detected. Keep the same session, remove the screen, and repeat the action with your real face directly in front of the camera.");
+      } else {
+        setStatusMessage("Active liveness rejected. Please use your real face directly in front of the camera.");
+        setError(codes.length ? `Active liveness rejected: ${codes.join(", ")}` : "Active liveness rejected. Try again.");
+      }
+      return false;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Active liveness could not be verified.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const analyzeSelfie = async (capture: Blob | Blob[]) => {
     if (!sessionId) return;
     try {
       setSelfieBusy(true);
       setSelfieNotice(null);
       setBusy(true);
       setError(null);
-      const optimizedBlob = await optimizeImageForUpload(blob, {
-        maxWidth: 900,
-        quality: 0.84,
-        filename: "selfie-capture-optimized.jpg"
-      });
-      const nextResult = await api.analyzeSelfie(sessionId, optimizedBlob);
+      const optimizedCapture = Array.isArray(capture)
+        ? await Promise.all(capture.map((blob, index) => optimizeImageForUpload(blob, {
+            maxWidth: 900,
+            quality: 0.82,
+            filename: `selfie-burst-${index + 1}-optimized.jpg`
+          })))
+        : await optimizeImageForUpload(capture, {
+            maxWidth: 900,
+            quality: 0.84,
+            filename: "selfie-capture-optimized.jpg"
+          });
+      const nextResult = await api.analyzeSelfie(sessionId, optimizedCapture);
       setResult(nextResult);
       if (nextResult.biometric.passive_liveness_passed && nextResult.biometric.face_match_score >= FACE_MATCH_PASS_THRESHOLD) {
         setStatusMessage("Selfie and passive liveness analyzed");
@@ -397,13 +461,13 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <img src={logoUrl} alt="LALIGENCE" />
+          <img src={logoUrl} alt="Kyron" />
         </div>
         <div className="assurance-card">
           <ShieldCheck size={22} />
           <div>
             <span>NIST IAL2-aligned</span>
-            <strong>Passport proofing</strong>
+            <strong>{documentLabels[documentType].title} proofing</strong>
           </div>
         </div>
         <nav className="step-list" aria-label="Verification steps">
@@ -423,7 +487,7 @@ export function App() {
                 aria-disabled={isLocked}
               >
                 <span className="step-icon">{isDone ? <Check size={17} /> : <Icon size={17} />}</span>
-                <span>{step.label}</span>
+                <span>{step.key === "document" ? documentLabels[documentType].short : step.label}</span>
                 <ChevronRight size={16} />
               </button>
             );
@@ -435,7 +499,7 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Identity verification</p>
-            <h1>Secure passport eKYC</h1>
+            <h1>Kyron secure eKYC</h1>
             {result?.user_id && <span className="user-id-pill">User ID: {result.user_id}</span>}
           </div>
           <div className={`decision-pill decision-${result?.decision ?? "pending"}`}>
@@ -443,7 +507,7 @@ export function App() {
           </div>
         </header>
 
-        <DemoWarning />
+        <DemoWarning compact />
 
         <div className="progress-track" aria-label="Verification progress">
           <span style={{ width: `${progress * 100}%` }} />
@@ -455,11 +519,18 @@ export function App() {
               <span>{statusMessage}</span>
               {busy && <span className="loading-dot" aria-live="polite">Processing</span>}
             </div>
-            {documentBusy && <DocumentUploadOverlay />}
+            {documentBusy && <DocumentUploadOverlay documentType={documentType} />}
             {activeStep === "document" && documentNotice && <DocumentAnalysisNotice notice={documentNotice} />}
-            {error && <div className="alert" role="alert"><ShieldAlert size={18} />{error}</div>}
+            {error && (
+              <div className="alert" role="alert">
+                <ShieldAlert size={18} />
+                <span>{error}</span>
+              </div>
+            )}
             {activeStep === "document" && (
               <DocumentStep
+                documentType={documentType}
+                onDocumentTypeChange={setDocumentType}
                 disabled={!sessionReady || documentBusy}
                 onUpload={uploadDocument}
                 onCapture={captureDocument}
@@ -468,7 +539,7 @@ export function App() {
             {activeStep === "liveness" && (
               <ActiveLivenessStep
                 challenges={result?.active_challenges ?? []}
-                onComplete={(challenge, allDone) => completeChallenge(challenge, allDone ? "gesture" : undefined)}
+                onComplete={verifyActiveChallenge}
               />
             )}
             {activeStep === "gesture" && (
@@ -509,17 +580,18 @@ export function App() {
   );
 }
 
-function DocumentUploadOverlay() {
+function DocumentUploadOverlay({ documentType }: { documentType: DocumentType }) {
+  const label = documentLabels[documentType];
   return (
-    <div className="document-upload-overlay" role="status" aria-live="polite" aria-label="Analyzing passport document">
+    <div className="document-upload-overlay" role="status" aria-live="polite" aria-label={`Analyzing ${label.upload} document`}>
       <div className="scanner-card">
         <div className="scanner-frame">
           <FileImage size={38} />
           <span className="scanner-line" />
         </div>
         <div>
-          <strong>Analyzing passport</strong>
-          <p>Checking OCR, MRZ, document quality, and fraud signals.</p>
+          <strong>Analyzing {label.upload}</strong>
+          <p>{documentType === "passport" ? "Checking OCR, MRZ, document quality, and fraud signals." : "Checking OCR fields, document quality, and fraud signals."}</p>
         </div>
       </div>
     </div>
@@ -571,43 +643,12 @@ function IntroScreen({
   return (
     <main className="intro-shell">
       <section className="intro-stage" aria-labelledby="intro-title">
-        <div className="intro-visual" aria-hidden="true">
-          <div className="intro-orbit">
-            <span />
-            <span />
-            <span />
-            <div className="intro-logo-mark">
-              <img src={logoUrl} alt="" />
-            </div>
-          </div>
-          <div className="intro-preview">
-            <div className="preview-passport">
-              <div className="preview-passport-photo" />
-              <div className="preview-lines">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="preview-mrz" />
-              <i />
-            </div>
-            <div className="preview-selfie">
-              <div className="preview-face" />
-              <span />
-            </div>
-          </div>
-        </div>
-
         <div className="intro-copy">
-          <div className="intro-brand-inline">
-            <img src={logoUrl} alt="LALIGENCE" />
-          </div>
           <p className="eyebrow">Secure identity verification</p>
-          <h1 id="intro-title">Passport eKYC with liveness and fraud checks</h1>
+          <h1 id="intro-title">Verify once. Pay and sign in by face.</h1>
           <p className="intro-description">
-            LALIGENCE helps verify passport evidence, guide live face and hand challenges,
-            compare a selfie, and return clear risk signals for an IAL2-aligned workflow.
+            Kyron combines passport proofing, live face checks, gesture challenges,
+            face matching, and clear risk decisions in one IAL2-aligned workflow.
           </p>
           <DemoWarning compact />
           {showNewUserForm ? (
@@ -654,6 +695,40 @@ function IntroScreen({
           )}
         </div>
 
+        <div className="intro-visual" aria-hidden="true">
+          <div className="intro-ekyc-animation">
+            <div className="ekyc-orbit-ring" />
+            <div className="ekyc-orbit-ring secondary" />
+            <div className="ekyc-logo-card">
+              <img src={logoUrl} alt="" />
+              <span>Kyron secure access</span>
+            </div>
+            <div className="ekyc-document-card">
+              <div className="ekyc-photo" />
+              <div className="ekyc-lines">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="ekyc-mrz" />
+              <span className="ekyc-scan-line" />
+            </div>
+            <div className="ekyc-face-card">
+              <Fingerprint size={34} />
+              <span />
+            </div>
+            <div className="ekyc-status-chip">
+              <ShieldCheck size={16} />
+              Verified
+            </div>
+            <div className="ekyc-step-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        </div>
+
         <div className="intro-capabilities" aria-label="Application capabilities">
           <div>
             <FileImage size={20} />
@@ -698,7 +773,7 @@ function FaceLoginScreen({
         </button>
         <div className="login-copy">
           <div className="intro-brand-inline">
-            <img src={logoUrl} alt="LALIGENCE" />
+            <img src={logoUrl} alt="Kyron" />
           </div>
           <p className="eyebrow">Returning user</p>
           <h1 id="face-login-title">Face login</h1>
@@ -786,7 +861,7 @@ function PaymentScreen({ onBack, onSignup }: { onBack: () => void; onSignup: () 
         </button>
         <div className="payment-copy">
           <div className="payment-brand">
-            <img src={logoUrl} alt="LALIGENCE" />
+            <img src={logoUrl} alt="Kyron" />
             <span>Face Pay</span>
           </div>
           <p className="eyebrow">Bank transfer authorization</p>
@@ -894,7 +969,7 @@ function ActiveLivenessStep({
   onComplete
 }: {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean) => void;
+  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean>;
 }) {
   return (
     <div className="step-layout">
@@ -934,20 +1009,38 @@ function HandGestureStep({
 }
 
 function DocumentStep({
+  documentType,
+  onDocumentTypeChange,
   disabled,
   onUpload,
   onCapture
 }: {
+  documentType: DocumentType;
+  onDocumentTypeChange: (documentType: DocumentType) => void;
   disabled: boolean;
   onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onCapture: (blob: Blob) => void;
 }) {
+  const label = documentLabels[documentType];
   return (
     <div className="step-layout">
       <div className="copy-block">
         <p className="eyebrow">Step 1</p>
-        <h2>Capture passport evidence</h2>
-        <p>Upload a clear passport image or capture one with the camera. The backend checks image quality, document-shaped evidence, file type, and fraud-risk signals.</p>
+        <h2>Capture {label.upload} evidence</h2>
+        <p>Upload a clear {label.upload} image or capture one with the camera. The backend checks image quality, document-shaped evidence, OCR fields, and fraud-risk signals.</p>
+        <div className="document-type-switch" aria-label="Document type">
+          {(["passport", "lao_id_card"] as DocumentType[]).map((type) => (
+            <button
+              className={documentType === type ? "active" : ""}
+              key={type}
+              type="button"
+              onClick={() => onDocumentTypeChange(type)}
+              disabled={disabled}
+            >
+              {documentLabels[type].title}
+            </button>
+          ))}
+        </div>
         {disabled && (
           <div className="session-waiting" role="status" aria-live="polite">
             <span />
@@ -956,18 +1049,19 @@ function DocumentStep({
         )}
         <label className={`upload-drop ${disabled ? "disabled" : ""}`} htmlFor={disabled ? undefined : "passport-upload"} aria-disabled={disabled}>
           <Upload size={24} />
-          <span>Upload passport image</span>
+          <span>Upload {label.upload} image</span>
           <small>{disabled ? "Wait until the session is ready" : "JPG, PNG, or WebP"}</small>
-          <input id="passport-upload" type="file" accept="image/*" onChange={onUpload} disabled={disabled} />
+          <input id="passport-upload" type="file" accept="image/*" capture="environment" onChange={onUpload} disabled={disabled} />
         </label>
       </div>
       <CameraCapture
-        label="Passport camera capture"
+        label={`${label.title} camera capture`}
         overlay="document"
+        facingMode="environment"
         onCapture={onCapture}
         disabled={disabled}
-        maxCaptureWidth={1600}
-        jpegQuality={0.88}
+        maxCaptureWidth={2200}
+        jpegQuality={0.95}
       />
     </div>
   );
@@ -1022,14 +1116,14 @@ function SelfieStep({
 }: {
   busy: boolean;
   notice: SelfieNotice;
-  onCapture: (blob: Blob) => void;
+  onCapture: (capture: Blob | Blob[]) => void;
 }) {
   return (
     <div className="step-layout">
       <div className="copy-block">
         <p className="eyebrow">Step 4</p>
         <h2>Selfie face match</h2>
-        <p>Open the camera, center your face in the oval, and capture a live selfie for passive liveness and face-match scoring.</p>
+        <p>Open the camera and move close so your face fills the yellow circle, then capture a short live burst for passive liveness and face-match scoring.</p>
         {notice && <DocumentAnalysisNotice notice={notice} />}
         {busy && (
           <div className="selfie-loading" role="status" aria-live="polite">
@@ -1042,8 +1136,13 @@ function SelfieStep({
         label="Selfie capture"
         overlay="face"
         onCapture={onCapture}
+        onCaptureFrames={onCapture}
         maxCaptureWidth={900}
         jpegQuality={0.84}
+        burstCount={10}
+        burstIntervalMs={250}
+        captureLabel="Capture live burst"
+        hint="Move close so your face fills the yellow circle before capturing."
       />
     </div>
   );
@@ -1093,8 +1192,8 @@ function ProfileSummary({ profile }: { profile: UserProfile }) {
     ["Last name", profile.last_name],
     ["Age", profile.age?.toString()],
     ["Nationality", profile.nationality],
-    ["Passport No.", profile.passport_number],
-    ["Passport expiry", profile.passport_expiry]
+    ["Document No.", profile.passport_number],
+    ["Document expiry", profile.passport_expiry]
   ].filter(([, value]) => value);
 
   return (
@@ -1114,20 +1213,21 @@ function ProfileSummary({ profile }: { profile: UserProfile }) {
 
 function OcrSummary({ result, compact = false }: { result: VerificationResult; compact?: boolean }) {
   const ocr = result.document.ocr;
+  const isLaoId = ocr.document_type === "lao_id_card";
   const rows = [
     ["Name", ocr.full_name],
-    ["Passport No.", ocr.passport_number],
+    [isLaoId ? "ID No." : "Passport No.", ocr.id_number ?? ocr.document_number ?? ocr.passport_number],
     ["Nationality", ocr.nationality],
     ["Date of birth", ocr.date_of_birth],
     ["Expiry", ocr.expiry_date],
-    ["MRZ valid", ocr.mrz_valid === null ? null : ocr.mrz_valid ? "Yes" : "No"]
+    [isLaoId ? "OCR confidence" : "MRZ valid", isLaoId ? `${Math.round(ocr.confidence * 100)}%` : ocr.mrz_valid === null ? null : ocr.mrz_valid ? "Yes" : "No"]
   ].filter(([, value]) => value);
 
   if (!rows.length) return null;
 
   return (
-    <section className={`ocr-summary ${compact ? "compact" : ""}`} aria-label="Passport OCR result">
-      <h3>Passport OCR</h3>
+    <section className={`ocr-summary ${compact ? "compact" : ""}`} aria-label={`${documentLabels[ocr.document_type].title} OCR result`}>
+      <h3>{documentLabels[ocr.document_type].title} OCR</h3>
       <dl>
         {rows.map(([label, value]) => (
           <div key={label}>
