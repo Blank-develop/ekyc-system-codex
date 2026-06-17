@@ -1,0 +1,25 @@
+name: Keep Hugging Face Space awake
+
+# Pings the live Space on a schedule so it doesn't go to sleep on the free tier.
+# Avoiding sleep removes the slow cold-start (model reload) on the first visit.
+# Note: this is best-effort — GitHub cron timing is approximate, and it keeps the
+# free CPU mildly busy. Disable this workflow if you'd rather let it sleep.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every ~10 minutes
+  workflow_dispatch: {}
+
+concurrency:
+  group: hf-space-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the Space
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 https://banku1212-kyron-ekyc.hf.space/ || echo "000")
+          echo "Space responded with HTTP $code"
+          # Don't fail the job on a transient non-200 (a cold start can take a moment).
