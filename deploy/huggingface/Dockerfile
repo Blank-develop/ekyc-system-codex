@@ -47,5 +47,10 @@ ENV LALIGENCE_FRONTEND_DIST=/app/frontend/dist
 # HF writes SQLite/profiles here; storage is ephemeral on the free tier.
 ENV DATABASE_URL=sqlite:////tmp/laligence_profiles.sqlite3
 
+# Speed: on the free CPU tier, run only the primary anti-spoof model (skip the
+# companion PAD models) so selfie/liveness frames are ~3x faster to score.
+# Slight reduction in spoof robustness, acceptable for the demo.
+ENV LALIGENCE_PAD_ENABLE_COMPANION_MODELS=false
+
 EXPOSE 7860
 CMD ["sh", "-c", "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 7860"]
