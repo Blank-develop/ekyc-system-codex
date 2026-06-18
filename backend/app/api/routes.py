@@ -1,7 +1,8 @@
+import secrets
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
@@ -376,19 +377,32 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
 
 
-@router.get("/profiles", response_model=UserProfileListResponse)
+def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Guard the profile admin endpoints. Fail-closed: disabled unless a token
+    is configured, and then the X-Admin-Token header must match it."""
+    expected = settings.admin_api_token
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin endpoints are disabled. Set LALIGENCE_ADMIN_API_TOKEN to enable them.",
+        )
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin token.")
+
+
+@router.get("/profiles", response_model=UserProfileListResponse, dependencies=[Depends(require_admin)])
 async def list_profiles() -> UserProfileListResponse:
     profiles = await run_in_threadpool(profile_store.list_profiles)
     return UserProfileListResponse(profiles=profiles)
 
 
-@router.delete("/profiles/{user_id}", response_model=DeleteProfileResponse)
+@router.delete("/profiles/{user_id}", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
 async def delete_profile(user_id: str) -> DeleteProfileResponse:
     deleted_count = await run_in_threadpool(profile_store.delete_user, user_id)
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
-@router.delete("/profiles", response_model=DeleteProfileResponse)
+@router.delete("/profiles", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
 async def delete_profiles() -> DeleteProfileResponse:
     deleted_count = await run_in_threadpool(profile_store.delete_all)
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)

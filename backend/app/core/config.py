@@ -59,6 +59,9 @@ class Settings(BaseModel):
         ("http://localhost:5173", "http://127.0.0.1:5173"),
     )
     frontend_dist: str = _str_env("LALIGENCE_FRONTEND_DIST", "")
+    # Admin profile endpoints (list/delete) are disabled unless this token is set.
+    # When set, callers must send it in the X-Admin-Token header. Fail-closed.
+    admin_api_token: str = _str_env("LALIGENCE_ADMIN_API_TOKEN", "")
     max_upload_size_bytes: int = _int_env("LALIGENCE_MAX_UPLOAD_SIZE_BYTES", 8 * 1024 * 1024)
     max_requests_per_minute: int = _int_env("LALIGENCE_MAX_REQUESTS_PER_MINUTE", 240)
     allowed_upload_content_types: tuple[str, ...] = _csv_env(
