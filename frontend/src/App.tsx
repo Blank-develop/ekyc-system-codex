@@ -17,9 +17,10 @@ import {
   ShieldCheck,
   UserCheck,
   UserPlus,
-  Upload
+  Upload,
+  X
 } from "lucide-react";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import logoUrl from "./assets/logo.png";
 import { ActiveLivenessCapture } from "./components/ActiveLivenessCapture";
 import { CameraCapture } from "./components/CameraCapture";
@@ -135,6 +136,42 @@ export function App() {
   const [faceLoginResult, setFaceLoginResult] = useState<FaceLoginResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Starting verification session");
+  const [toast, setToast] = useState<{ id: number; kind: "success" | "error" | "info"; title: string; message?: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((kind: "success" | "error" | "info", title: string, message?: string) => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast({ id: Date.now(), kind, title, message });
+    if (kind !== "error") {
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 5000);
+    }
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    if (error) showToast("error", "Something needs attention", error);
+  }, [error, showToast]);
+
+  useEffect(() => {
+    if (documentNotice) showToast(documentNotice.type === "success" ? "success" : "error", documentNotice.title, documentNotice.message);
+  }, [documentNotice, showToast]);
+
+  useEffect(() => {
+    if (selfieNotice) showToast(selfieNotice.type === "success" ? "success" : "error", selfieNotice.title, selfieNotice.message);
+  }, [selfieNotice, showToast]);
+
+  useEffect(() => {
+    if (enrollmentNotice) showToast(enrollmentNotice.type === "success" ? "success" : "error", enrollmentNotice.title, enrollmentNotice.message);
+  }, [enrollmentNotice, showToast]);
+
+  useEffect(() => {
+    if (result?.decision === "passed") showToast("success", "Verification passed", "All checks passed — you're verified.");
+    else if (result?.decision === "rejected") showToast("error", "Verification rejected", "One or more checks failed. See the reason codes below.");
+  }, [result?.decision, showToast]);
 
   const sessionId = result?.session_id;
   const normalizedUserId = userId.trim();
@@ -459,6 +496,7 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <StatusToast toast={toast} onClose={dismissToast} />
       <aside className="sidebar">
         <div className="brand">
           <img src={logoUrl} alt="Kyron" />
@@ -952,6 +990,29 @@ function PaymentScreen({ onBack, onSignup }: { onBack: () => void; onSignup: () 
         </div>
       </section>
     </main>
+  );
+}
+
+function StatusToast({
+  toast,
+  onClose
+}: {
+  toast: { id: number; kind: "success" | "error" | "info"; title: string; message?: string } | null;
+  onClose: () => void;
+}) {
+  if (!toast) return null;
+  const Icon = toast.kind === "success" ? ShieldCheck : toast.kind === "error" ? ShieldAlert : BadgeCheck;
+  return (
+    <div className={`status-toast status-toast-${toast.kind}`} role="status" aria-live="assertive" key={toast.id}>
+      <Icon size={20} className="status-toast-icon" aria-hidden="true" />
+      <div className="status-toast-body">
+        <strong>{toast.title}</strong>
+        {toast.message && <span>{toast.message}</span>}
+      </div>
+      <button className="status-toast-close" type="button" onClick={onClose} aria-label="Dismiss notification">
+        <X size={18} />
+      </button>
+    </div>
   );
 }
 
