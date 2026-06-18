@@ -142,9 +142,9 @@ export function App() {
   const showToast = useCallback((kind: "success" | "error" | "info", title: string, message?: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     setToast({ id: Date.now(), kind, title, message });
-    if (kind !== "error") {
-      toastTimerRef.current = window.setTimeout(() => setToast(null), 5000);
-    }
+    // Stay visible long enough to read, then fade. Errors linger a bit longer.
+    const duration = kind === "error" ? 8000 : 6000;
+    toastTimerRef.current = window.setTimeout(() => setToast(null), duration);
   }, []);
 
   const dismissToast = useCallback(() => {
