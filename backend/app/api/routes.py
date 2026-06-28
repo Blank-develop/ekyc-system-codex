@@ -58,6 +58,30 @@ def _signal(code: str, label: str, severity: str, score: float) -> FraudSignal:
     return FraudSignal(code=code, label=label, severity=severity, score=max(0.0, min(score, 1.0)))
 
 
+def _mask_document_number(number: str | None) -> str | None:
+    if not number:
+        return number
+    value = number.strip()
+    if len(value) <= 4:
+        return "•" * len(value)
+    return f"{value[:2]}{'•' * (len(value) - 4)}{value[-2:]}"
+
+
+def _redact_profile(profile):
+    """Return a privacy-minimised copy for unauthenticated face-login responses:
+    keep enough to greet the returning user (first name, nationality, masked
+    document number) but drop full name, DOB, and expiry."""
+    return profile.model_copy(
+        update={
+            "full_name": None,
+            "last_name": None,
+            "date_of_birth": None,
+            "passport_expiry": None,
+            "passport_number": _mask_document_number(profile.passport_number),
+        }
+    )
+
+
 def _float_check(checks: dict[str, object], key: str) -> float:
     value = checks.get(key)
     if isinstance(value, bool):
@@ -456,6 +480,8 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
             reason_codes.append("FACE_LOGIN_NO_MATCH")
 
     profile = match.profile if match else None
+    if profile is not None and not settings.face_login_expose_pii:
+        profile = _redact_profile(profile)
     return FaceLoginResponse(
         decision=Decision.passed if profile and not reason_codes else Decision.rejected,
         matched=profile is not None,
