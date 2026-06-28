@@ -8,6 +8,7 @@ export interface Challenge {
   prompt: string;
   instruction: string;
   passed: boolean;
+  nonce?: string | null;
 }
 
 export interface FraudSignal {
@@ -176,11 +177,11 @@ export const api = {
     });
   },
 
-  completeChallenge: (sessionId: string, challengeId: string, passed = true) =>
+  completeChallenge: (sessionId: string, challengeId: string, nonce?: string | null, passed = true) =>
     request<VerificationResult>(`/api/verifications/${sessionId}/challenge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_id: challengeId, passed }),
+      body: JSON.stringify({ challenge_id: challengeId, passed, nonce }),
       retries: 2
     }),
 

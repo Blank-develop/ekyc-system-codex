@@ -245,6 +245,19 @@ async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest
     session = _get_session(session_id)
     if payload.challenge_id in {challenge.id for challenge in session.active_challenges}:
         raise HTTPException(status_code=409, detail="Active liveness requires server-verified face evidence.")
+    target = next((c for c in session.hand_challenges if c.id == payload.challenge_id), None)
+    if target is None:
+        raise HTTPException(status_code=400, detail="Unknown hand-gesture challenge.")
+    # Ordering: gestures can only be completed after the server-verified
+    # active-liveness step has passed (cannot skip ahead via the API).
+    if not session.biometric.active_liveness_passed:
+        raise HTTPException(status_code=409, detail="Complete active liveness before the hand-gesture step.")
+    if not payload.passed:
+        raise HTTPException(status_code=400, detail="A passed hand gesture is required.")
+    # Freshness + replay protection: require the matching one-time, session-bound
+    # nonce. It is consumed on success, so a captured request cannot be replayed.
+    if not target.nonce or not payload.nonce or not secrets.compare_digest(payload.nonce, target.nonce):
+        raise HTTPException(status_code=401, detail="Invalid, missing, or already-used challenge nonce.")
     return store.complete_challenge(session_id, payload)
 
 
