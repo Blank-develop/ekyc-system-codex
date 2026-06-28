@@ -66,6 +66,12 @@ class Settings(BaseModel):
     # (no full document number / DOB / expiry). Enable only in trusted/authenticated
     # deployments where returning the full identity to the caller is intended.
     face_login_expose_pii: bool = _bool_env("LALIGENCE_FACE_LOGIN_EXPOSE_PII", False)
+    # Behind a trusted reverse proxy (HF, Cloudflare), derive the client IP from
+    # CF-Connecting-IP / X-Forwarded-For so per-client rate limiting works.
+    trust_proxy_headers: bool = _bool_env("LALIGENCE_TRUST_PROXY_HEADERS", False)
+    # Anti brute-force / face-harvesting throttle on /api/face-login.
+    face_login_max_per_minute: int = _int_env("LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE", 12)
+    face_login_global_max_per_minute: int = _int_env("LALIGENCE_FACE_LOGIN_GLOBAL_MAX_PER_MINUTE", 60)
     max_upload_size_bytes: int = _int_env("LALIGENCE_MAX_UPLOAD_SIZE_BYTES", 8 * 1024 * 1024)
     max_requests_per_minute: int = _int_env("LALIGENCE_MAX_REQUESTS_PER_MINUTE", 240)
     allowed_upload_content_types: tuple[str, ...] = _csv_env(

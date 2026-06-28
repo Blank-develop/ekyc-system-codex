@@ -53,5 +53,9 @@ ENV DATABASE_URL=sqlite:////tmp/laligence_profiles.sqlite3
 # to true for the stronger, more accurate full PAD ensemble.
 ENV LALIGENCE_PAD_ENABLE_COMPANION_MODELS=false
 
+# Behind the HF reverse proxy: derive the real client IP from forwarded headers
+# so the per-client face-login throttle works (not bucketed under one proxy IP).
+ENV LALIGENCE_TRUST_PROXY_HEADERS=true
+
 EXPOSE 7860
 CMD ["sh", "-c", "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 7860"]
