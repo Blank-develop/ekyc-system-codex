@@ -66,10 +66,13 @@ Prioritized. Tier 1 items are blockers.
 - [x] Face-login PII redacted by default (masked document number, no full
   name/DOB/expiry for unauthenticated callers; full PII behind
   `LALIGENCE_FACE_LOGIN_EXPOSE_PII`). **Still needs real authentication.**
-- [ ] **Do not trust the client** — backend-verify the **hand-gesture** step
-  (currently frontend-trusted) and confirm liveness from submitted media.
-- [ ] **Replay/freshness** — server-issued one-time challenge nonces + timestamps,
-  with frames cryptographically bound to the session + challenge.
+- [~] **Do not trust the client** — hand-gesture completion is now ordering-enforced
+  (requires the server-verified active-liveness step first) and nonce-gated.
+  Still needed: full server-side gesture classification (a backend hand model)
+  instead of trusting client-side MediaPipe detection.
+- [x] **Replay/freshness** — hand-gesture challenges use server-issued one-time,
+  session-bound nonces, consumed on use (replay-proof). Extending the same
+  nonce binding to submitted media frames remains future work.
 - [ ] **Injection-attack defense** — mobile SDK integrity / device attestation.
 - [ ] **Independent PAD evaluation** (ISO/IEC 30107-3) before any accuracy claim.
 
