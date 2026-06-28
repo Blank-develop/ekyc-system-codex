@@ -139,6 +139,28 @@ Today's security hardening and verification:
 - **Status:** **PASS**
 - **Note:** Default global cap `LALIGENCE_FACE_LOGIN_GLOBAL_MAX_PER_MINUTE = 60`. Also covered: limiter enforcement and proxy-aware client-IP extraction (`test_rate_limit.py`, 6 tests). Full suite: **83/83 pass**.
 
+### A14 — Gesture step ordering enforced server-side
+- **Objective:** A hand-gesture challenge cannot be completed before the server-verified active-liveness step has passed (no skipping ahead via the API).
+- **Steps:** `pytest backend/tests/test_gesture_challenge.py::test_gesture_requires_active_liveness_first` — `POST /challenge` for a hand gesture while `active_liveness_passed = false`.
+- **Expected:** HTTP `409`.
+- **Actual:** HTTP `409` "Complete active liveness before the hand-gesture step."
+- **Status:** **PASS**
+
+### A15 — Gesture completion requires a valid one-time nonce
+- **Objective:** The gesture step cannot be marked passed by a blind `passed: true` — it needs the server-issued, session-bound nonce.
+- **Steps:** `pytest backend/tests/test_gesture_challenge.py::test_gesture_requires_valid_nonce` — complete with (a) no nonce and (b) a wrong nonce.
+- **Expected:** HTTP `401` in both cases.
+- **Actual:** HTTP `401` "Invalid, missing, or already-used challenge nonce."
+- **Status:** **PASS**
+
+### A16 — Gesture nonce is single-use (replay blocked)
+- **Objective:** A captured gesture-completion request cannot be replayed (freshness).
+- **Steps:** `pytest backend/tests/test_gesture_challenge.py::test_gesture_completes_with_nonce_then_blocks_replay` — complete with the correct nonce, then resubmit the same nonce.
+- **Expected:** First → HTTP `200` (challenge passed); replay → HTTP `401` (nonce consumed).
+- **Actual:** First `200` + challenge `passed: true`; replay `401`.
+- **Status:** **PASS**
+- **Note:** Gesture *classification* remains client-side (MediaPipe); full server-side gesture verification needs a backend hand model (future work). Full suite: **86/86 pass**.
+
 ---
 
 ## Results summary
@@ -158,8 +180,11 @@ Today's security hardening and verification:
 | A11 | Face-login redacts PII | sensitive fields dropped | **PASS** |
 | A12 | Face-login per-client throttle | 429 over limit | **PASS** |
 | A13 | Face-login global cap | 429 over cap | **PASS** |
+| A14 | Gesture ordering enforced | 409 | **PASS** |
+| A15 | Gesture requires valid nonce | 401 | **PASS** |
+| A16 | Gesture nonce single-use (replay) | 200 then 401 | **PASS** |
 
-**Outcome:** 13/13 PASS.
+**Outcome:** 16/16 PASS.
 
 ## Residual risks (open — to state honestly in the presentation)
 
@@ -168,7 +193,7 @@ These are **not yet fixed** and remain on the production roadmap (`SECURITY.md`)
 - **`POST /api/face-login` is still unauthenticated.** Mitigated (A10–A11): it now returns a redacted profile (masked document number, no full name/DOB/expiry). Adding real authentication remains on the roadmap.
 - **Biometric templates and PII are stored unencrypted** (SQLite/PostgreSQL).
 - **No API authentication** on the verification endpoints themselves.
-- **Hand-gesture step is frontend-trusted** (potential direct-API bypass); **no replay nonces**.
+- **Hand-gesture step:** mitigated (A14–A16: one-time session-bound nonce + ordering enforcement; replay blocked). Gesture *classification* still runs client-side — full server-side gesture verification (a backend hand model) is future work.
 - **Rate limiting is in-memory / single-instance.** Mitigated for face-login (A12–A13: per-client + global throttle, proxy-aware client IP). Production still needs a distributed limiter (Redis) + escalating lockout for multi-instance deployments.
 
 ## Reproduction commands (appendix)
