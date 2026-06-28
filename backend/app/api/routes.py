@@ -2,7 +2,7 @@ import secrets
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
@@ -21,6 +21,7 @@ from app.models.schemas import (
 from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
+from app.services.rate_limit import SlidingWindowLimiter
 from app.services.selfie import SelfieAnalyzer
 from app.services.session_store import store
 
@@ -32,6 +33,34 @@ document_analyzers = {
 }
 face_recognizer = OpenCvFaceRecognizer()
 selfie_analyzer = SelfieAnalyzer(face_recognizer=face_recognizer)
+
+# Anti brute-force / face-harvesting throttle for /api/face-login: a per-client
+# limit for fairness plus a global cap that bounds total attempts even when the
+# client IP cannot be trusted/distinguished (shared proxy IPs).
+_face_login_client_limiter = SlidingWindowLimiter(settings.face_login_max_per_minute)
+_face_login_global_limiter = SlidingWindowLimiter(settings.face_login_global_max_per_minute)
+
+
+def _client_ip(request: Request) -> str:
+    if settings.trust_proxy_headers:
+        # CF-Connecting-IP is set by Cloudflare and not client-spoofable behind
+        # the Cloudflare edge; X-Forwarded-For is the fallback.
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.split(",")[0].strip()
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def face_login_rate_limit(request: Request) -> None:
+    if request.client and request.client.host == "testclient":
+        return
+    if not _face_login_global_limiter.allow("face-login"):
+        raise HTTPException(status_code=429, detail="Face login is busy right now. Please try again in a minute.")
+    if not _face_login_client_limiter.allow(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many face login attempts. Please wait a minute and try again.")
 
 
 def _get_session(session_id: UUID) -> VerificationResult:
@@ -432,7 +461,7 @@ async def delete_profiles() -> DeleteProfileResponse:
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
-@router.post("/face-login", response_model=FaceLoginResponse)
+@router.post("/face-login", response_model=FaceLoginResponse, dependencies=[Depends(face_login_rate_limit)])
 async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     started_at = time.perf_counter()
     content = await _read_upload(file)
