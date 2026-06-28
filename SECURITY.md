@@ -75,8 +75,10 @@ Prioritized. Tier 1 items are blockers.
 
 ### Tier 3 — application & infrastructure hardening
 - [ ] Harden image parsing (decompression bombs, dimension caps, parser CVEs).
-- [ ] **Distributed rate limiting** + per-account limits (the in-memory per-IP
-  limiter is weak behind shared/proxied IPs) + WAF.
+- [~] **Rate limiting.** Face-login has a dedicated per-client + global throttle
+  with proxy-aware client IP (`LALIGENCE_TRUST_PROXY_HEADERS`). Still needed:
+  **distributed** rate limiting (Redis) for multi-instance, per-account limits,
+  escalating lockout, and a WAF.
 - [ ] **Concurrency limits / queueing** for expensive ML inference (DoS).
 - [ ] **Secrets management** (no secrets in git/env-in-repo); key rotation.
 - [ ] **Dependency scanning** (SCA / Dependabot) across the ML stack; resolve
@@ -110,9 +112,12 @@ Prioritized. Tier 1 items are blockers.
 | --- | --- |
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
 | `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
+| `LALIGENCE_TRUST_PROXY_HEADERS` | `true` behind a trusted proxy (HF/Cloudflare) so client IP comes from `CF-Connecting-IP` / `X-Forwarded-For` for per-client throttling. |
+| `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |
+| `LALIGENCE_FACE_LOGIN_GLOBAL_MAX_PER_MINUTE` | Global face-login attempt cap / harvesting backstop (default 60). |
 | `LALIGENCE_CORS_ORIGINS` | Explicit CORS allowlist (no wildcard). |
 | `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` | Upload size cap. |
-| `LALIGENCE_MAX_REQUESTS_PER_MINUTE` | Per-IP rate limit. |
+| `LALIGENCE_MAX_REQUESTS_PER_MINUTE` | Global per-IP rate limit (all endpoints). |
 | `DATABASE_URL` | Profile store; use PostgreSQL with TLS + encryption at rest in production. |
 
 ## Reporting a vulnerability

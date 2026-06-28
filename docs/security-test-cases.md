@@ -121,6 +121,24 @@ Today's security hardening and verification:
 - **Status:** **PASS**
 - **Note:** Full PII is only returned when `LALIGENCE_FACE_LOGIN_EXPOSE_PII=true` (trusted/authenticated deployments). 77/77 backend tests pass with the change.
 
+### A12 — Face-login per-client throttle
+- **Objective:** A single client cannot make unlimited face-login attempts (brute-force / face harvesting).
+- **Precondition:** Per-client limit set low for the test (global limit high).
+- **Steps:** `pytest backend/tests/test_rate_limit.py::test_face_login_throttle_blocks_per_client`
+- **Expected:** Requests over the per-client limit are rejected with HTTP `429`.
+- **Actual:** Allowed up to the limit, then `HTTPException` status `429`.
+- **Status:** **PASS**
+- **Note:** Default per-client limit `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE = 12`. Behind a trusted proxy (`LALIGENCE_TRUST_PROXY_HEADERS=true`, set on the HF build) the client IP is taken from `CF-Connecting-IP` / `X-Forwarded-For` so per-client limiting works behind shared proxy IPs.
+
+### A13 — Face-login global cap (harvesting backstop)
+- **Objective:** Total face-login attempts are bounded even when client IPs are shared/spoofed (the hard backstop).
+- **Precondition:** Global limit set low for the test; requests come from different client IPs.
+- **Steps:** `pytest backend/tests/test_rate_limit.py::test_face_login_throttle_global_cap`
+- **Expected:** Once the global cap is reached, further attempts are rejected with HTTP `429` regardless of source IP.
+- **Actual:** Two allowed (cap=2 in test), third from a new IP → `HTTPException` status `429`.
+- **Status:** **PASS**
+- **Note:** Default global cap `LALIGENCE_FACE_LOGIN_GLOBAL_MAX_PER_MINUTE = 60`. Also covered: limiter enforcement and proxy-aware client-IP extraction (`test_rate_limit.py`, 6 tests). Full suite: **83/83 pass**.
+
 ---
 
 ## Results summary
@@ -138,8 +156,10 @@ Today's security hardening and verification:
 | A9 | Verification flow intact | 200 | **PASS** |
 | A10 | Document number masked | `PA•••••43` | **PASS** |
 | A11 | Face-login redacts PII | sensitive fields dropped | **PASS** |
+| A12 | Face-login per-client throttle | 429 over limit | **PASS** |
+| A13 | Face-login global cap | 429 over cap | **PASS** |
 
-**Outcome:** 11/11 PASS.
+**Outcome:** 13/13 PASS.
 
 ## Residual risks (open — to state honestly in the presentation)
 
@@ -149,7 +169,7 @@ These are **not yet fixed** and remain on the production roadmap (`SECURITY.md`)
 - **Biometric templates and PII are stored unencrypted** (SQLite/PostgreSQL).
 - **No API authentication** on the verification endpoints themselves.
 - **Hand-gesture step is frontend-trusted** (potential direct-API bypass); **no replay nonces**.
-- **Rate limiting is per-IP in-memory** (weak behind shared/proxied IPs).
+- **Rate limiting is in-memory / single-instance.** Mitigated for face-login (A12–A13: per-client + global throttle, proxy-aware client IP). Production still needs a distributed limiter (Redis) + escalating lockout for multi-instance deployments.
 
 ## Reproduction commands (appendix)
 
