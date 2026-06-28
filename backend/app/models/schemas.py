@@ -23,6 +23,9 @@ class Challenge(BaseModel):
     prompt: str
     instruction: str
     passed: bool = False
+    # Server-issued one-time token; the client must echo it to complete the
+    # challenge. Consumed on use (set to None) so a completion cannot be replayed.
+    nonce: str | None = None
 
 
 class OcrResult(BaseModel):
@@ -93,6 +96,7 @@ class CreateVerificationRequest(BaseModel):
 class CompleteChallengeRequest(BaseModel):
     challenge_id: str
     passed: bool
+    nonce: str | None = None
 
 
 class SelfieAnalysisRequest(BaseModel):

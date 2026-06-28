@@ -301,7 +301,7 @@ export function App() {
 
   const completeChallenge = (challenge: Challenge, next?: StepKey) => {
     if (!sessionId) return;
-    sync(() => api.completeChallenge(sessionId, challenge.id), `${challenge.prompt} confirmed`, next);
+    sync(() => api.completeChallenge(sessionId, challenge.id, challenge.nonce), `${challenge.prompt} confirmed`, next);
   };
 
   const verifyActiveChallenge = async (challenge: Challenge, allDone: boolean, evidence: Blob | Blob[]) => {

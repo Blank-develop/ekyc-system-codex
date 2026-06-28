@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import secrets
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -78,7 +79,13 @@ class VerificationStore:
             for key, prompt, instruction in random.sample(ACTIVE_PROMPTS, 3)
         ]
         hands = [
-            Challenge(id=key, type=ChallengeType.hand_gesture, prompt=prompt, instruction=instruction)
+            Challenge(
+                id=key,
+                type=ChallengeType.hand_gesture,
+                prompt=prompt,
+                instruction=instruction,
+                nonce=secrets.token_urlsafe(16),
+            )
             for key, prompt, instruction in sample_hand_prompts(3)
         ]
         result = VerificationResult(
@@ -124,6 +131,9 @@ class VerificationStore:
         for challenge in session.hand_challenges:
             if challenge.id == payload.challenge_id:
                 challenge.passed = payload.passed
+                if payload.passed:
+                    # Consume the one-time nonce so the completion cannot be replayed.
+                    challenge.nonce = None
         session.biometric.hand_challenge_passed = all(challenge.passed for challenge in session.hand_challenges)
         session.updated_at = datetime.now(timezone.utc)
         return self._decide(session)
