@@ -63,6 +63,9 @@ Prioritized. Tier 1 items are blockers.
 
 ### Tier 2 — fraud / integrity
 - [x] Admin endpoints locked (fail-closed token guard).
+- [x] Face-login PII redacted by default (masked document number, no full
+  name/DOB/expiry for unauthenticated callers; full PII behind
+  `LALIGENCE_FACE_LOGIN_EXPOSE_PII`). **Still needs real authentication.**
 - [ ] **Do not trust the client** — backend-verify the **hand-gesture** step
   (currently frontend-trusted) and confirm liveness from submitted media.
 - [ ] **Replay/freshness** — server-issued one-time challenge nonces + timestamps,
@@ -106,6 +109,7 @@ Prioritized. Tier 1 items are blockers.
 | Env var | Purpose |
 | --- | --- |
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
+| `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
 | `LALIGENCE_CORS_ORIGINS` | Explicit CORS allowlist (no wildcard). |
 | `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` | Upload size cap. |
 | `LALIGENCE_MAX_REQUESTS_PER_MINUTE` | Per-IP rate limit. |
