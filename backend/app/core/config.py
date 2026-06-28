@@ -62,6 +62,10 @@ class Settings(BaseModel):
     # Admin profile endpoints (list/delete) are disabled unless this token is set.
     # When set, callers must send it in the X-Admin-Token header. Fail-closed.
     admin_api_token: str = _str_env("LALIGENCE_ADMIN_API_TOKEN", "")
+    # Face login is unauthenticated, so by default it returns a redacted profile
+    # (no full document number / DOB / expiry). Enable only in trusted/authenticated
+    # deployments where returning the full identity to the caller is intended.
+    face_login_expose_pii: bool = _bool_env("LALIGENCE_FACE_LOGIN_EXPOSE_PII", False)
     max_upload_size_bytes: int = _int_env("LALIGENCE_MAX_UPLOAD_SIZE_BYTES", 8 * 1024 * 1024)
     max_requests_per_minute: int = _int_env("LALIGENCE_MAX_REQUESTS_PER_MINUTE", 240)
     allowed_upload_content_types: tuple[str, ...] = _csv_env(
