@@ -62,6 +62,10 @@ class Settings(BaseModel):
     # Admin profile endpoints (list/delete) are disabled unless this token is set.
     # When set, callers must send it in the X-Admin-Token header. Fail-closed.
     admin_api_token: str = _str_env("LALIGENCE_ADMIN_API_TOKEN", "")
+    # API authentication for all /api endpoints. When one or more keys are set
+    # (comma-separated), callers must send a matching key in the X-API-Key header.
+    # Unset = open (public demo). Set in production / for partner integrations.
+    api_keys: tuple[str, ...] = _csv_env("LALIGENCE_API_KEYS", ())
     # Face login is unauthenticated, so by default it returns a redacted profile
     # (no full document number / DOB / expiry). Enable only in trusted/authenticated
     # deployments where returning the full identity to the caller is intended.

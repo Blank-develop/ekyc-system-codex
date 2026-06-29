@@ -3,11 +3,11 @@ import logging
 import threading
 from collections import defaultdict, deque
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import router, warm_face_login_dependencies
+from app.api.routes import require_api_key, router, warm_face_login_dependencies
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -57,7 +57,7 @@ def _with_timing(request, response, started_at: float):
     return response
 
 
-app.include_router(router, prefix=settings.api_prefix)
+app.include_router(router, prefix=settings.api_prefix, dependencies=[Depends(require_api_key)])
 
 
 @app.on_event("startup")

@@ -49,8 +49,10 @@ required before processing real identities in production.
 Prioritized. Tier 1 items are blockers.
 
 ### Tier 1 — blockers
-- [ ] **API authentication & authorization** on the verification endpoints
-  (OAuth2/JWT for users, API keys/mTLS for partner systems) + RBAC.
+- [~] **API authentication & authorization.** Optional API-key gate on all `/api`
+  endpoints (`LALIGENCE_API_KEYS`, `X-API-Key` header) — off for the public demo,
+  required in production / for partner integrations. Still needed: per-user
+  OAuth2/JWT for the web frontend, RBAC, and mTLS for high-trust partners.
 - [ ] **Encrypt biometric templates at rest** (KMS-managed keys / encrypted
   columns); prefer protected/cancelable templates (ISO/IEC 24745) over raw
   embeddings.
@@ -114,6 +116,7 @@ Prioritized. Tier 1 items are blockers.
 | Env var | Purpose |
 | --- | --- |
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
+| `LALIGENCE_API_KEYS` | Comma-separated API keys. When set, all `/api` endpoints require a matching `X-API-Key` header. Unset = open (public demo). |
 | `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
 | `LALIGENCE_TRUST_PROXY_HEADERS` | `true` behind a trusted proxy (HF/Cloudflare) so client IP comes from `CF-Connecting-IP` / `X-Forwarded-For` for per-client throttling. |
 | `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |
