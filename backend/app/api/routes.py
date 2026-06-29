@@ -443,6 +443,16 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
 
 
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Gate all /api endpoints behind an API key when one or more are configured.
+    Open (no-op) when LALIGENCE_API_KEYS is unset, so the public demo still works."""
+    keys = settings.api_keys
+    if not keys:
+        return
+    if not x_api_key or not any(secrets.compare_digest(x_api_key, key) for key in keys):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key. Send it in the X-API-Key header.")
+
+
 def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
     """Guard the profile admin endpoints. Fail-closed: disabled unless a token
     is configured, and then the X-Admin-Token header must match it."""
