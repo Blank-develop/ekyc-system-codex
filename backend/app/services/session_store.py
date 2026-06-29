@@ -245,7 +245,11 @@ class VerificationStore:
                 reasons.append(signal.code)
         if session.biometric.face_match_score and session.biometric.face_match_score < settings.min_face_match_score:
             reasons.append("FACE_MATCH_LOW")
-        if session.biometric.passive_liveness_risk > settings.max_passive_liveness_risk:
+        # Trust the selfie analysis's holistic verdict (which already applies the
+        # risk cap plus every hard anti-spoof cue) instead of re-thresholding the
+        # raw risk with a different, stricter cutoff — those two disagreeing left
+        # genuine selfies stuck "pending".
+        if not session.biometric.passive_liveness_passed:
             reasons.append("PASSIVE_LIVENESS_REQUIRED")
 
         incomplete = {"DOCUMENT_REQUIRED", "ACTIVE_LIVENESS_REQUIRED", "HAND_GESTURE_REQUIRED", "PASSIVE_LIVENESS_REQUIRED"}
