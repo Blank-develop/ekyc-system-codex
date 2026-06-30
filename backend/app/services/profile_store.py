@@ -13,6 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.types import JSON
 
+from app.services.crypto import get_template_cipher
+
 from app.core.config import get_settings
 from app.models.schemas import UserProfile, VerificationResult
 
@@ -236,7 +238,8 @@ class FaceProfileStore:
         record.enrolled_at = profile.enrolled_at
         record.last_login_at = profile.last_login_at
         record.updated_at = updated_at
-        record.face_template = [float(value) for value in face_template]
+        # Encrypt the biometric template at rest (no-op when no key is configured).
+        record.face_template = get_template_cipher().encrypt_template(face_template)
         record.template_model = "opencv_yunet_sface"
         record.template_dimensions = len(face_template)
 
@@ -258,7 +261,7 @@ class FaceProfileStore:
             "enrolled_at": record.enrolled_at,
             "last_login_at": record.last_login_at,
             "updated_at": record.updated_at,
-            "face_template": record.face_template,
+            "face_template": get_template_cipher().decrypt_template(record.face_template),
             "template_model": record.template_model,
             "template_dimensions": record.template_dimensions,
         }
