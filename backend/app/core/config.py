@@ -66,6 +66,10 @@ class Settings(BaseModel):
     # (comma-separated), callers must send a matching key in the X-API-Key header.
     # Unset = open (public demo). Set in production / for partner integrations.
     api_keys: tuple[str, ...] = _csv_env("LALIGENCE_API_KEYS", ())
+    # Fernet key for encrypting biometric templates at rest. Unset = plaintext
+    # (dev/demo). Set in production. Generate:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    encryption_key: str = _str_env("LALIGENCE_ENCRYPTION_KEY", "")
     # Face login is unauthenticated, so by default it returns a redacted profile
     # (no full document number / DOB / expiry). Enable only in trusted/authenticated
     # deployments where returning the full identity to the caller is intended.
