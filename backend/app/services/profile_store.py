@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, String, UniqueConstraint, create_engine, delete, func, select
+from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, UniqueConstraint, create_engine, delete, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -64,6 +64,11 @@ class FaceProfileRecord(Base):
     face_template: Mapped[list[float]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
     template_model: Mapped[str] = mapped_column(String(64), nullable=False, default="opencv_yunet_sface")
     template_dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    # When encryption is enabled the PII columns above are left null and the
+    # values live (encrypted) in pii_encrypted; passport_number_bidx is a blind
+    # index (keyed hash) so the one-document-one-profile rule still works.
+    pii_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    passport_number_bidx: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class FaceProfileStore:
@@ -151,13 +156,15 @@ class FaceProfileStore:
         user_record = db.scalar(
             select(FaceProfileRecord).where(FaceProfileRecord.user_id == user_id, FaceProfileRecord.active.is_(True))
         )
+        cipher = get_template_cipher()
         passport_record = None
         if passport_number:
+            if cipher.enabled:
+                passport_filter = FaceProfileRecord.passport_number_bidx == cipher.blind_index(passport_number)
+            else:
+                passport_filter = FaceProfileRecord.passport_number == passport_number
             passport_record = db.scalar(
-                select(FaceProfileRecord).where(
-                    FaceProfileRecord.passport_number == passport_number,
-                    FaceProfileRecord.active.is_(True),
-                )
+                select(FaceProfileRecord).where(passport_filter, FaceProfileRecord.active.is_(True))
             )
         if passport_record and passport_record.user_id and passport_record.user_id != user_id:
             raise ProfileEnrollmentConflict("Identity document number is already enrolled to another user_id.")
@@ -168,9 +175,13 @@ class FaceProfileStore:
         return db.scalar(select(FaceProfileRecord).where(FaceProfileRecord.verification_session_id == str(result.session_id)))
 
     def _delete_duplicate_records(self, db: Session, profile: UserProfile, existing: FaceProfileRecord | None) -> None:
+        cipher = get_template_cipher()
         conditions = [FaceProfileRecord.user_id == profile.user_id]
         if profile.passport_number:
-            conditions.append(FaceProfileRecord.passport_number == profile.passport_number)
+            if cipher.enabled:
+                conditions.append(FaceProfileRecord.passport_number_bidx == cipher.blind_index(profile.passport_number))
+            else:
+                conditions.append(FaceProfileRecord.passport_number == profile.passport_number)
         for condition in conditions:
             statement = delete(FaceProfileRecord).where(condition)
             if existing:
@@ -224,28 +235,54 @@ class FaceProfileStore:
         return UserProfile.model_validate(payload)
 
     def _apply_profile(self, record: FaceProfileRecord, profile: UserProfile, face_template: list[float], updated_at: datetime) -> None:
+        cipher = get_template_cipher()
         record.user_id = profile.user_id
         record.active = profile.active
         record.verification_session_id = str(profile.verification_session_id)
-        record.full_name = profile.full_name
-        record.first_name = profile.first_name
-        record.last_name = profile.last_name
-        record.age = profile.age
-        record.date_of_birth = profile.date_of_birth
-        record.nationality = profile.nationality
-        record.passport_number = profile.passport_number
-        record.passport_expiry = profile.passport_expiry
         record.enrolled_at = profile.enrolled_at
         record.last_login_at = profile.last_login_at
         record.updated_at = updated_at
         # Encrypt the biometric template at rest (no-op when no key is configured).
-        record.face_template = get_template_cipher().encrypt_template(face_template)
+        record.face_template = cipher.encrypt_template(face_template)
         record.template_model = "opencv_yunet_sface"
         record.template_dimensions = len(face_template)
 
+        if cipher.enabled:
+            # Store PII encrypted; keep the plaintext columns null. passport_number_bidx
+            # is a blind index so the uniqueness lookup still works without exposure.
+            record.pii_encrypted = cipher.encrypt_json({
+                "full_name": profile.full_name,
+                "first_name": profile.first_name,
+                "last_name": profile.last_name,
+                "age": profile.age,
+                "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+                "nationality": profile.nationality,
+                "passport_number": profile.passport_number,
+                "passport_expiry": profile.passport_expiry.isoformat() if profile.passport_expiry else None,
+            })
+            record.passport_number_bidx = cipher.blind_index(profile.passport_number)
+            record.full_name = record.first_name = record.last_name = None
+            record.age = None
+            record.date_of_birth = None
+            record.nationality = None
+            record.passport_number = None
+            record.passport_expiry = None
+        else:
+            record.pii_encrypted = None
+            record.passport_number_bidx = None
+            record.full_name = profile.full_name
+            record.first_name = profile.first_name
+            record.last_name = profile.last_name
+            record.age = profile.age
+            record.date_of_birth = profile.date_of_birth
+            record.nationality = profile.nationality
+            record.passport_number = profile.passport_number
+            record.passport_expiry = profile.passport_expiry
+
     @staticmethod
     def _record_to_dict(record: FaceProfileRecord) -> dict:
-        return {
+        cipher = get_template_cipher()
+        data = {
             "face_id": record.face_id,
             "user_id": record.user_id,
             "active": record.active,
@@ -261,10 +298,17 @@ class FaceProfileStore:
             "enrolled_at": record.enrolled_at,
             "last_login_at": record.last_login_at,
             "updated_at": record.updated_at,
-            "face_template": get_template_cipher().decrypt_template(record.face_template),
+            "face_template": cipher.decrypt_template(record.face_template),
             "template_model": record.template_model,
             "template_dimensions": record.template_dimensions,
         }
+        # Encrypted PII (dates come back as ISO strings; pydantic parses them).
+        pii = cipher.decrypt_json(record.pii_encrypted) if record.pii_encrypted else None
+        if pii:
+            for field in ("full_name", "first_name", "last_name", "age", "date_of_birth",
+                          "nationality", "passport_number", "passport_expiry"):
+                data[field] = pii.get(field)
+        return data
 
     def _read_records(self) -> list[dict]:
         with self._sessionmaker()() as db:

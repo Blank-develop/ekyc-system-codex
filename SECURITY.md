@@ -53,12 +53,14 @@ Prioritized. Tier 1 items are blockers.
   endpoints (`LALIGENCE_API_KEYS`, `X-API-Key` header) — off for the public demo,
   required in production / for partner integrations. Still needed: per-user
   OAuth2/JWT for the web frontend, RBAC, and mTLS for high-trust partners.
-- [~] **Encrypt biometric templates at rest.** Face templates are encrypted with
-  authenticated symmetric encryption (Fernet) when `LALIGENCE_ENCRYPTION_KEY` is
-  set — encrypted before the DB, decrypted only in memory for matching; no-op for
-  the demo. Still needed: **KMS-managed keys** (not a bare env var), encrypting
-  the **PII fields** (names/DOB/passport — passport number needs a blind index to
-  stay queryable), and protected/cancelable templates (ISO/IEC 24745).
+- [~] **Encrypt biometric templates + PII at rest.** When `LALIGENCE_ENCRYPTION_KEY`
+  is set, face templates **and** PII (name, DOB, nationality, passport number,
+  expiry) are encrypted with authenticated symmetric encryption (Fernet) — the
+  PII lives in an encrypted blob and `passport_number` keeps a **blind index**
+  (keyed hash) so the one-document-one-profile rule still works; plaintext columns
+  are nulled. No-op for the demo; legacy plaintext rows stay readable. Still
+  needed: **KMS-managed keys** (not a bare env var) and protected/cancelable
+  templates (ISO/IEC 24745).
 - [ ] **Consent, retention & deletion** — explicit recorded consent for biometric
   processing, retention limits with auto-purge, and a real erasure workflow.
 - [ ] **Data residency** — host real Lao/SEA identity data in-region per local

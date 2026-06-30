@@ -15,6 +15,8 @@ Generate a key with:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from functools import lru_cache
 
@@ -26,14 +28,38 @@ PREFIX = "enc:v1:"
 class TemplateCipher:
     def __init__(self, key: str) -> None:
         self._fernet = None
+        self._index_key = b""
         if key:
             from cryptography.fernet import Fernet
 
             self._fernet = Fernet(key.encode() if isinstance(key, str) else key)
+            # Separate derived key for blind indexes (don't reuse the cipher key directly).
+            self._index_key = hashlib.sha256(key.encode() + b"|blind-index").digest()
 
     @property
     def enabled(self) -> bool:
         return self._fernet is not None
+
+    def encrypt_json(self, obj) -> str | None:
+        if self._fernet is None:
+            return None
+        return PREFIX + self._fernet.encrypt(json.dumps(obj).encode()).decode()
+
+    def decrypt_json(self, stored) -> dict | None:
+        if not isinstance(stored, str) or not stored.startswith(PREFIX) or self._fernet is None:
+            return None
+        try:
+            return json.loads(self._fernet.decrypt(stored[len(PREFIX):].encode()).decode())
+        except Exception:
+            return None
+
+    def blind_index(self, value) -> str | None:
+        """Deterministic keyed hash for equality lookups on encrypted fields,
+        without revealing the value (e.g. passport-number uniqueness)."""
+        if value is None or self._fernet is None:
+            return None
+        normalized = str(value).strip().upper().encode()
+        return hmac.new(self._index_key, normalized, hashlib.sha256).hexdigest()
 
     def encrypt_template(self, template: list[float]) -> list[float] | str:
         floats = [float(v) for v in template]
