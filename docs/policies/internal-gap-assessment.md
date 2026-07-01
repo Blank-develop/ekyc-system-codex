@@ -114,7 +114,7 @@ Material controls (representative; a full 93-control SoA is a Phase 3 follow-up)
 | G8 | **End-to-end FRR** on genuine doc↔selfie pairs | NIST 800-63A | 🟠 High | M | 1 |
 | G9 | **Consumer consent UI** + self-service erasure/export | GDPR | 🟡 Medium | M | 2/3 |
 | G10 | **Audit → external WORM/SIEM** + monitoring/alerting | ISO A.8.15-16 | 🟡 Medium | M | 3 |
-| G11 | **Session security** (short-lived, client-bound tokens) | NIST 800-63B | 🟡 Medium | S | 2 |
+| G11 | ~~Session security~~ **DONE** — unguessable + short-lived (idle/absolute TTL, 410 on expiry) + client-bound (`X-Session-Token`) | NIST 800-63B | 🟢 Closed | — | ✓ |
 | G12 | **Injection defense** / device attestation | ISO 30107-4 | 🟡 Medium | L | 4 |
 | G13 | **Dependency scanning** (SCA/Dependabot) | ISO A.8.8 | 🟡 Medium | S | 2 |
 | G14 | **Secrets management** + rotation | ISO A.8.24 | 🟡 Medium | S | 2 |
@@ -131,9 +131,9 @@ Effort: S ≈ ≤1 day · M ≈ days · L ≈ weeks · ⧉/$$ = external + budge
 ## 6. Prioritized closure plan
 
 **Now (blockers to any real data) — Phase 2 tail**
-G1 in-region hosting · G3 PostgreSQL hardening · G4 backups/DR · G11 session
-security · G13 SCA. *(G2 secret sourcing + rotation and G14 secrets mgmt — the
-sourcing layer is done; remaining is wiring a managed KMS.)*
+G1 in-region hosting · G3 PostgreSQL hardening · G4 backups/DR · G13 SCA.
+*(G11 session security — done. G2 secret sourcing + rotation and G14 secrets
+mgmt — the sourcing layer is done; remaining is wiring a managed KMS.)*
 
 **Next (before/at launch) — Phase 2–3**
 G8 end-to-end FRR · G9 consent UI + self-service erasure · G10 SIEM/monitoring ·

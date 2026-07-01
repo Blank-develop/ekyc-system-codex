@@ -108,6 +108,7 @@ export interface VerificationResult {
   };
   active_challenges: Challenge[];
   hand_challenges: Challenge[];
+  session_token?: string | null;
 }
 
 export interface UserProfile {
@@ -148,6 +149,13 @@ export interface FaceLoginResponse {
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const NETWORK_RETRY_DELAYS_MS = [900, 2200];
 
+// Per-session client-binding token, issued when a verification is created and
+// echoed back on every session-scoped request as X-Session-Token.
+let sessionToken: string | null = null;
+export const setSessionToken = (token: string | null) => {
+  sessionToken = token;
+};
+
 type RequestOptions = RequestInit & {
   retries?: number;
   timeoutMs?: number;
@@ -157,11 +165,11 @@ const request = async <T>(path: string, init: RequestOptions = {}): Promise<T> =
   const { retries = 1, timeoutMs = 45000, headers, ...requestInit } = init;
   let lastError: unknown;
 
-  // Attach the operator JWT (when present) so authenticated endpoints work.
+  // Attach the operator JWT and the per-session binding token (when present).
   const token = getAuthToken();
-  const authHeaders: HeadersInit = token
-    ? { ...(headers ?? {}), Authorization: `Bearer ${token}` }
-    : (headers ?? {});
+  const authHeaders: Record<string, string> = { ...((headers ?? {}) as Record<string, string>) };
+  if (token) authHeaders.Authorization = `Bearer ${token}`;
+  if (sessionToken) authHeaders["X-Session-Token"] = sessionToken;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
@@ -210,13 +218,16 @@ const normalizeNetworkError = (error: unknown) => {
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export const api = {
-  createSession: (userId: string) =>
-    request<VerificationResult>("/api/verifications", {
+  createSession: async (userId: string) => {
+    const result = await request<VerificationResult>("/api/verifications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId }),
       retries: 2
-    }),
+    });
+    setSessionToken(result.session_token ?? null);
+    return result;
+  },
 
   uploadDocument: (sessionId: string, file: File | Blob, documentType: DocumentType = "passport") => {
     const body = new FormData();

@@ -71,11 +71,22 @@ def face_login_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="Too many face login attempts. Please wait a minute and try again.")
 
 
-def _get_session(session_id: UUID) -> VerificationResult:
+def _get_session(session_id: UUID, request: Request) -> VerificationResult:
     try:
-        return store.get(session_id)
+        session = store.get(session_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Verification session not found") from exc
+    # Short-lived: reject + evict once idle/absolute TTL is exceeded.
+    if store.is_expired(session_id):
+        store.drop(session_id)
+        raise HTTPException(status_code=410, detail="Verification session has expired. Please start over.")
+    # Client-bound: the session-id alone is not enough — the per-session token
+    # (issued at creation) must be presented, defeating id-only hijack/replay.
+    if settings.session_binding_enforced:
+        token = request.headers.get("x-session-token")
+        if not store.validate_token(session_id, token):
+            raise HTTPException(status_code=403, detail="Invalid or missing session token.")
+    return session
 
 
 async def _read_upload(file: UploadFile) -> bytes:
@@ -201,23 +212,27 @@ def warm_face_login_dependencies() -> None:
 
 @router.post("/verifications", response_model=VerificationResult)
 async def create_verification(payload: CreateVerificationRequest) -> VerificationResult:
-    return store.create(payload.user_id)
+    result = store.create(payload.user_id)
+    # Return the client-binding token once, at creation, without persisting it on
+    # the stored result (so later responses don't leak it).
+    return result.model_copy(update={"session_token": store.session_token(result.session_id)})
 
 
 @router.get("/verifications/{session_id}", response_model=VerificationResult)
-async def get_verification(session_id: UUID) -> VerificationResult:
-    return _get_session(session_id)
+async def get_verification(session_id: UUID, request: Request) -> VerificationResult:
+    return _get_session(session_id, request)
 
 
 @router.post("/verifications/{session_id}/document", response_model=VerificationResult)
 async def upload_document(
     session_id: UUID,
+    request: Request,
     file: UploadFile = File(...),
     ocr_text: str | None = Form(default=None),
     document_type: str = Form(default="passport"),
 ) -> VerificationResult:
     started_at = time.perf_counter()
-    _get_session(session_id)
+    _get_session(session_id, request)
     analyzer = document_analyzers.get(document_type)
     if analyzer is None:
         raise HTTPException(status_code=400, detail="Unsupported document type. Use passport or lao_id_card.")
@@ -249,8 +264,8 @@ async def upload_document(
 
 
 @router.post("/verifications/{session_id}/challenge", response_model=VerificationResult)
-async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest) -> VerificationResult:
-    session = _get_session(session_id)
+async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest, request: Request) -> VerificationResult:
+    session = _get_session(session_id, request)
     if payload.challenge_id in {challenge.id for challenge in session.active_challenges}:
         raise HTTPException(status_code=409, detail="Active liveness requires server-verified face evidence.")
     target = next((c for c in session.hand_challenges if c.id == payload.challenge_id), None)
@@ -272,11 +287,12 @@ async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest
 @router.post("/verifications/{session_id}/active-liveness", response_model=VerificationResult)
 async def complete_active_liveness(
     session_id: UUID,
+    request: Request,
     challenge_id: str = Form(...),
     file: UploadFile | None = File(default=None),
     frames: list[UploadFile] | None = File(default=None),
 ) -> VerificationResult:
-    session = _get_session(session_id)
+    session = _get_session(session_id, request)
     if session.document.status != "passed":
         raise HTTPException(status_code=409, detail="Document must pass before active liveness.")
     if challenge_id not in {challenge.id for challenge in session.active_challenges}:
@@ -400,11 +416,12 @@ async def complete_active_liveness(
 @router.post("/verifications/{session_id}/selfie", response_model=VerificationResult)
 async def analyze_selfie(
     session_id: UUID,
+    request: Request,
     file: UploadFile | None = File(default=None),
     frames: list[UploadFile] | None = File(default=None),
 ) -> VerificationResult:
     started_at = time.perf_counter()
-    _get_session(session_id)
+    _get_session(session_id, request)
     selfie_files = frames or ([file] if file else [])
     if not selfie_files:
         raise HTTPException(status_code=400, detail="At least one selfie frame is required.")
@@ -437,8 +454,8 @@ async def analyze_selfie(
 
 
 @router.post("/verifications/{session_id}/enroll-face", response_model=FaceEnrollmentResponse)
-async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
-    session = _get_session(session_id)
+async def enroll_face(session_id: UUID, request: Request) -> FaceEnrollmentResponse:
+    session = _get_session(session_id, request)
     if session.decision != Decision.passed:
         raise HTTPException(status_code=409, detail="Verification must pass before face enrollment.")
     selfie_embedding = store.get_selfie_face_embedding(session_id)
