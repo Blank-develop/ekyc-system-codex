@@ -785,6 +785,10 @@ function IntroScreen({
             <span>Risk decision</span>
           </div>
         </div>
+        <a className="intro-staff-link" href="#admin">
+          <LockKeyhole size={13} />
+          Staff console
+        </a>
       </section>
     </main>
   );

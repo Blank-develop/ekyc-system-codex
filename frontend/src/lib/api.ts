@@ -1,6 +1,29 @@
+import { getAuthToken } from "./auth";
+
 export type Decision = "pending" | "passed" | "rejected";
 export type ChallengeType = "active_liveness" | "hand_gesture";
 export type DocumentType = "passport" | "lao_id_card";
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  role: string;
+}
+
+export interface AuthUserInfo {
+  username: string;
+  role: string;
+}
+
+export interface UserProfileListResponse {
+  profiles: UserProfile[];
+}
+
+export interface DeleteProfileResponse {
+  deleted: boolean;
+  deleted_count: number;
+}
 
 export interface Challenge {
   id: string;
@@ -81,6 +104,8 @@ export interface UserProfile {
   passport_expiry: string | null;
   enrolled_at: string;
   last_login_at: string | null;
+  consent_version: string | null;
+  consented_at: string | null;
 }
 
 export interface FaceEnrollmentResponse {
@@ -108,8 +133,14 @@ type RequestOptions = RequestInit & {
 };
 
 const request = async <T>(path: string, init: RequestOptions = {}): Promise<T> => {
-  const { retries = 1, timeoutMs = 45000, ...requestInit } = init;
+  const { retries = 1, timeoutMs = 45000, headers, ...requestInit } = init;
   let lastError: unknown;
+
+  // Attach the operator JWT (when present) so authenticated endpoints work.
+  const token = getAuthToken();
+  const authHeaders: HeadersInit = token
+    ? { ...(headers ?? {}), Authorization: `Bearer ${token}` }
+    : (headers ?? {});
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
@@ -117,6 +148,7 @@ const request = async <T>(path: string, init: RequestOptions = {}): Promise<T> =
     try {
       const response = await fetch(`${API_BASE_URL}${path}`, {
         ...requestInit,
+        headers: authHeaders,
         signal: controller.signal
       });
       window.clearTimeout(timeout);
@@ -236,5 +268,35 @@ export const api = {
       retries: 2,
       timeoutMs: 90000
     });
-  }
+  },
+
+  // --- Operator auth + admin console (JWT) -----------------------------------
+
+  login: (username: string, password: string) => {
+    // OAuth2 password grant expects application/x-www-form-urlencoded.
+    const body = new URLSearchParams({ username, password });
+    return request<TokenResponse>("/api/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      retries: 1
+    });
+  },
+
+  me: () => request<AuthUserInfo>("/api/auth/me", { retries: 1 }),
+
+  listProfiles: () =>
+    request<UserProfileListResponse>("/api/profiles", { retries: 1 }),
+
+  deleteProfile: (userId: string) =>
+    request<DeleteProfileResponse>(`/api/profiles/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      retries: 1
+    }),
+
+  purgeExpiredProfiles: () =>
+    request<DeleteProfileResponse>("/api/profiles/purge-expired", {
+      method: "POST",
+      retries: 1
+    })
 };

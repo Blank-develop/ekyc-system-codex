@@ -54,9 +54,11 @@ Prioritized. Tier 1 items are blockers.
   integrations; (2) **per-user OAuth2 password → JWT** (`LALIGENCE_JWT_SECRET`,
   `POST /api/auth/token`, `GET /api/auth/me`) with **RBAC** — admin endpoints
   accept a Bearer token whose role is `admin` (or the legacy `X-Admin-Token`).
-  Passwords are PBKDF2-hashed; tokens are HS256, signed, expiring. Both are off in
-  the public demo. Still needed: a **DB-backed user store** with self-service
-  signup, **refresh tokens** / rotation, and **mTLS** for high-trust partners.
+  Passwords are PBKDF2-hashed; tokens are HS256, signed, expiring. A **staff login
+  console** (`#admin` in the web app) uses this to sign operators in and authorize
+  the profiles / purge / delete views. Both layers are off in the public demo.
+  Still needed: a **DB-backed user store** with self-service signup, **refresh
+  tokens** / rotation, and **mTLS** for high-trust partners.
 - [~] **Encrypt biometric templates + PII at rest.** When `LALIGENCE_ENCRYPTION_KEY`
   is set, face templates **and** PII (name, DOB, nationality, passport number,
   expiry) are encrypted with authenticated symmetric encryption (Fernet) — the
@@ -73,8 +75,11 @@ Prioritized. Tier 1 items are blockers.
   served by admin `DELETE /api/profiles/{user_id}`. Still needed: a user-facing
   consent **UI** with granular opt-in, a self-service data-subject deletion/export
   request flow, and a scheduled purge job.
-- [ ] **Data residency** — host real Lao/SEA identity data in-region per local
-  law; do **not** use a public third-party demo platform for real PII.
+- [~] **Data residency** — host real Lao/SEA identity data in-region per local
+  law; do **not** use a public third-party demo platform for real PII. **Plan
+  written** (`docs/in-region-hosting-plan.md`): options, target architecture,
+  migration steps, and a go-live checklist. Still needed: **execute** the move
+  (provision in-region, managed PostgreSQL, KMS keys) — a hosting/ops task.
 - [ ] **Session security** — unguessable, short-lived, client-bound session
   tokens with expiry to prevent hijack/replay.
 
