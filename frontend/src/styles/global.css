@@ -2964,3 +2964,177 @@ code {
     padding: 12px;
   }
 }
+
+/* --- Staff / admin console (#admin) --------------------------------------- */
+.admin-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+.admin-shell-wide {
+  justify-content: flex-start;
+  align-items: stretch;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+.admin-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 18px 44px rgba(6, 27, 105, 0.08);
+  width: 100%;
+}
+.admin-login {
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 4px solid var(--gold-500);
+}
+.admin-logo { width: 54px; margin-bottom: 4px; }
+.admin-logo-sm { width: 34px; }
+.admin-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 19px;
+  color: var(--navy-950);
+  margin: 0;
+}
+.admin-muted {
+  color: var(--muted);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--navy-900);
+  font-weight: 600;
+}
+.admin-field input {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mist);
+  color: var(--ink);
+}
+.admin-field input:focus {
+  outline: none;
+  border-color: var(--navy-800);
+  background: var(--paper);
+}
+.admin-primary {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--navy-900);
+  color: #fff;
+  font-weight: 700;
+}
+.admin-primary:hover { background: var(--navy-800); }
+.admin-primary:disabled { opacity: 0.6; }
+.admin-back {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-top: 2px;
+}
+.admin-back:hover { color: var(--navy-800); }
+.admin-status {
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin: 0;
+}
+.admin-status-error { background: #fdecea; color: var(--danger); }
+.admin-status-ok { background: #e6f4ee; color: var(--success); }
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px 18px;
+  gap: 12px;
+}
+.admin-brand { display: flex; align-items: center; gap: 11px; }
+.admin-brand strong { display: block; color: var(--navy-950); font-size: 15px; }
+.admin-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--navy-900);
+  font-weight: 600;
+  font-size: 13px;
+}
+.admin-ghost:hover { border-color: var(--navy-800); }
+.admin-danger { color: var(--danger); }
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.admin-section-head h2 { font-size: 16px; margin: 0; color: var(--navy-950); }
+.admin-count {
+  font-size: 12px;
+  background: var(--navy-100);
+  color: var(--navy-900);
+  border-radius: 999px;
+  padding: 2px 9px;
+  margin-left: 6px;
+}
+.admin-actions { display: flex; gap: 8px; }
+.admin-table-wrap { overflow-x: auto; }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.admin-table th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+.admin-table tbody tr:hover { background: var(--mist); }
+.admin-icon-danger {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: inline-flex;
+}
+.admin-icon-danger:hover { border-color: var(--danger); background: #fdecea; }
+.intro-staff-link {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.intro-staff-link:hover { color: var(--navy-800); }
