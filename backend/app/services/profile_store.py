@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -69,6 +69,9 @@ class FaceProfileRecord(Base):
     # index (keyed hash) so the one-document-one-profile rule still works.
     pii_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     passport_number_bidx: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Privacy: recorded consent (terms version + timestamp) for biometric processing.
+    consent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FaceProfileStore:
@@ -150,6 +153,19 @@ class FaceProfileStore:
             self._active_records_cache = None
             return int(deleted_count)
 
+    def purge_expired_profiles(self, retention_days: int, now: datetime | None = None) -> int:
+        """Data-minimization: delete profiles whose last activity (last login, or
+        enrollment if never used) is older than the retention window. retention_days
+        <= 0 disables auto-purge (retain indefinitely) and is a no-op."""
+        if retention_days <= 0:
+            return 0
+        cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=retention_days)
+        last_activity = func.coalesce(FaceProfileRecord.last_login_at, FaceProfileRecord.enrolled_at)
+        with self._sessionmaker().begin() as db:
+            result = db.execute(delete(FaceProfileRecord).where(last_activity < cutoff))
+            self._active_records_cache = None
+            return int(result.rowcount or 0)
+
     def _find_existing(self, db: Session, result: VerificationResult) -> FaceProfileRecord | None:
         user_id = result.user_id.strip()
         passport_number = result.document.ocr.passport_number or result.document.ocr.document_number or result.document.ocr.id_number
@@ -206,6 +222,8 @@ class FaceProfileStore:
             passport_expiry=ocr.expiry_date,
             enrolled_at=enrolled_at,
             last_login_at=None,
+            consent_version=get_settings().consent_version,
+            consented_at=enrolled_at,
         )
 
     @staticmethod
@@ -242,6 +260,8 @@ class FaceProfileStore:
         record.enrolled_at = profile.enrolled_at
         record.last_login_at = profile.last_login_at
         record.updated_at = updated_at
+        record.consent_version = profile.consent_version
+        record.consented_at = profile.consented_at
         # Encrypt the biometric template at rest (no-op when no key is configured).
         record.face_template = cipher.encrypt_template(face_template)
         record.template_model = "opencv_yunet_sface"
@@ -297,6 +317,8 @@ class FaceProfileStore:
             "passport_expiry": record.passport_expiry,
             "enrolled_at": record.enrolled_at,
             "last_login_at": record.last_login_at,
+            "consent_version": record.consent_version,
+            "consented_at": record.consented_at,
             "updated_at": record.updated_at,
             "face_template": cipher.decrypt_template(record.face_template),
             "template_model": record.template_model,
