@@ -15,6 +15,7 @@ retention/consent config, JWT auth, etc.), so they double as **evidence**.
 | [Data Protection & Retention Policy](data-protection-and-retention-policy.md) | How personal/biometric data is handled, retained, and deleted | GDPR Art. 5/13/17/32, ISO 27001 A.5, FATF record-keeping |
 | [DPIA — Biometric eKYC](dpia-biometric-ekyc.md) | Risk assessment for high-risk (biometric) processing | GDPR Art. 35 |
 | [Incident Response Plan](incident-response-plan.md) | Detect, contain, and notify on security/biometric breaches | GDPR Art. 33/34, ISO 27001 A.5.24–28 |
+| [Internal Gap Assessment & SoA](internal-gap-assessment.md) | Self-audit + Statement of Applicability + prioritized gap-closure plan | ISO 27001 Annex A, NIST 800-63A |
 
 **Cross-references:** [`SECURITY.md`](../../SECURITY.md) ·
 [`docs/controls-standards-mapping.md`](../controls-standards-mapping.md) ·
