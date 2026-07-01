@@ -61,8 +61,14 @@ Prioritized. Tier 1 items are blockers.
   are nulled. No-op for the demo; legacy plaintext rows stay readable. Still
   needed: **KMS-managed keys** (not a bare env var) and protected/cancelable
   templates (ISO/IEC 24745).
-- [ ] **Consent, retention & deletion** — explicit recorded consent for biometric
-  processing, retention limits with auto-purge, and a real erasure workflow.
+- [~] **Consent, retention & deletion.** Each enrolled profile records the
+  **consent terms version + timestamp** (`LALIGENCE_CONSENT_VERSION`).
+  **Retention** auto-purge is available (`LALIGENCE_PROFILE_RETENTION_DAYS` +
+  admin `POST /api/profiles/purge-expired`) — deletes profiles whose last activity
+  is older than the window; 0 = retain indefinitely (demo default). **Erasure** is
+  served by admin `DELETE /api/profiles/{user_id}`. Still needed: a user-facing
+  consent **UI** with granular opt-in, a self-service data-subject deletion/export
+  request flow, and a scheduled purge job.
 - [ ] **Data residency** — host real Lao/SEA identity data in-region per local
   law; do **not** use a public third-party demo platform for real PII.
 - [ ] **Session security** — unguessable, short-lived, client-bound session
@@ -123,6 +129,8 @@ Prioritized. Tier 1 items are blockers.
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
 | `LALIGENCE_API_KEYS` | Comma-separated API keys. When set, all `/api` endpoints require a matching `X-API-Key` header. Unset = open (public demo). |
 | `LALIGENCE_ENCRYPTION_KEY` | Fernet key — when set, biometric templates are encrypted at rest. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Unset = plaintext (dev/demo). |
+| `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
+| `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
 | `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
 | `LALIGENCE_TRUST_PROXY_HEADERS` | `true` behind a trusted proxy (HF/Cloudflare) so client IP comes from `CF-Connecting-IP` / `X-Forwarded-For` for per-client throttling. |
 | `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |

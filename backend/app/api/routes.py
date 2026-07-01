@@ -484,6 +484,16 @@ async def delete_profiles() -> DeleteProfileResponse:
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
+@router.post("/profiles/purge-expired", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
+async def purge_expired_profiles() -> DeleteProfileResponse:
+    """Retention enforcement: delete profiles older than LALIGENCE_PROFILE_RETENTION_DAYS.
+    No-op (0 deleted) when retention is disabled (0). Intended for a scheduled job."""
+    deleted_count = await run_in_threadpool(
+        profile_store.purge_expired_profiles, settings.profile_retention_days
+    )
+    return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
+
+
 @router.post("/face-login", response_model=FaceLoginResponse, dependencies=[Depends(face_login_rate_limit)])
 async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
     started_at = time.perf_counter()

@@ -70,6 +70,11 @@ class Settings(BaseModel):
     # (dev/demo). Set in production. Generate:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     encryption_key: str = _str_env("LALIGENCE_ENCRYPTION_KEY", "")
+    # Privacy: consent terms version recorded against each enrolled profile, and
+    # data-retention period in days (0 = retain indefinitely; >0 enables purge of
+    # profiles whose last activity is older than the window).
+    consent_version: str = _str_env("LALIGENCE_CONSENT_VERSION", "2026-06-v1")
+    profile_retention_days: int = _int_env("LALIGENCE_PROFILE_RETENTION_DAYS", 0)
     # Face login is unauthenticated, so by default it returns a redacted profile
     # (no full document number / DOB / expiry). Enable only in trusted/authenticated
     # deployments where returning the full identity to the caller is intended.

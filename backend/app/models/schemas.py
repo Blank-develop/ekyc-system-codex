@@ -123,6 +123,8 @@ class UserProfile(BaseModel):
     passport_expiry: date | None = None
     enrolled_at: datetime
     last_login_at: datetime | None = None
+    consent_version: str | None = None
+    consented_at: datetime | None = None
 
 
 class FaceEnrollmentResponse(BaseModel):
