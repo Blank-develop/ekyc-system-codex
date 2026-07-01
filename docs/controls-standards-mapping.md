@@ -75,6 +75,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Access control** (A.5.15–18) | API-key gate + per-user OAuth2/JWT + RBAC + fail-closed admin | ✓ | `services/auth.py`, `test_auth.py`, `test_admin_endpoints.py`, `test_api_auth.py` |
 | **Cryptography** (A.8.24) | Encryption at rest; TLS/HSTS in hosted deploys | ✓ | `crypto.py`, `deploy/digitalocean/` (Caddy) |
 | **Secure development** (A.8.25–28) | Input validation, upload guards, tests in CI | ◐ | upload allowlist/size cap in `api/routes.py`; test suite |
+| **Vulnerability management** (A.8.8) | **SCA CI gate** (pip-audit + npm audit) + **Dependabot**; both stacks clean | ✓ | `.github/workflows/security-scan.yml`, `.github/dependabot.yml` |
 | **Logging & monitoring** (A.8.15–16) | **Tamper-evident hash-chained audit log** of auth, PII access, admin actions, enrollment; integrity-verify endpoint | ◐ | `services/audit.py`, `tests/test_audit.py`, `GET /api/audit/verify` |
 | **Data masking** (A.8.11) | Face-login redaction | ✓ | `test_face_login_redaction.py` |
 | **Rate limiting / DoS** (A.8.6 capacity) | Per-IP + face-login throttles | ◐ | `services/rate_limit.py` |

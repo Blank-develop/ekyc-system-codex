@@ -130,8 +130,13 @@ Prioritized. Tier 1 items are blockers.
   `file:`/`command:`/`env:` specs (`services/key_provider.py`), and encryption/JWT
   keys support **rotation** (retired keys still decrypt/verify). Still needed: a
   managed KMS/HSM with automated rotation.
-- [ ] **Dependency scanning** (SCA / Dependabot) across the ML stack; resolve
-  known advisories.
+- [x] **Dependency scanning** (SCA). A CI gate
+  (`.github/workflows/security-scan.yml`) runs `pip-audit` (backend) and
+  `npm audit` (frontend) on every push/PR and weekly, failing on known
+  vulnerabilities; **Dependabot** (`.github/dependabot.yml`) opens the fix PRs.
+  The initial scan found and cleared **20 backend + 1 frontend** advisories —
+  notably in `python-multipart` (upload parsing) and `pillow` (image decode), our
+  direct attack surface. Both stacks are currently clean.
 - [ ] Strict **Content-Security-Policy**; verify TLS configuration.
 - [ ] **PostgreSQL** not publicly exposed, TLS in transit, encrypted at rest,
   least-privilege DB user, encrypted backups.
