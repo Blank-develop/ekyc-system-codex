@@ -8,6 +8,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.schemas import (
+    AuditListResponse,
+    AuditVerifyResponse,
     AuthUserInfo,
     CompleteChallengeRequest,
     CreateVerificationRequest,
@@ -22,6 +24,7 @@ from app.models.schemas import (
     VerificationResult,
 )
 from app.services import auth as auth_service
+from app.services.audit import audit_log
 from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
@@ -444,6 +447,10 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
         profile = await run_in_threadpool(profile_store.enroll, session, selfie_embedding)
     except ProfileEnrollmentConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    audit_log.record(
+        "enrollment", "enroll", actor=profile.user_id, subject=str(session_id),
+        detail={"decision": session.decision.value, "consent_version": profile.consent_version},
+    )
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
 
 
@@ -455,7 +462,7 @@ def _auth_users() -> dict[str, auth_service.AuthUser]:
 
 
 @router.post("/auth/token", response_model=TokenResponse)
-async def issue_token(form: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
+async def issue_token(request: Request, form: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
     """OAuth2 password grant: exchange username + password for a signed JWT."""
     if not settings.jwt_secret:
         raise HTTPException(status_code=503, detail="Authentication is not configured.")
@@ -463,11 +470,19 @@ async def issue_token(form: OAuth2PasswordRequestForm = Depends()) -> TokenRespo
         auth_service.authenticate, _auth_users(), form.username, form.password
     )
     if user is None:
+        audit_log.record(
+            "auth", "login_failed", actor=form.username or None,
+            subject=_client_ip(request), detail={"success": False},
+        )
         raise HTTPException(
             status_code=401,
             detail="Incorrect username or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    audit_log.record(
+        "auth", "login", actor=user.username,
+        subject=_client_ip(request), detail={"role": user.role, "success": True},
+    )
     token = auth_service.create_access_token(
         settings.jwt_secret, user.username, user.role, settings.jwt_expire_minutes
     )
@@ -535,35 +550,55 @@ def require_admin(
 
 
 @router.get("/profiles", response_model=UserProfileListResponse, dependencies=[Depends(require_admin)])
-async def list_profiles() -> UserProfileListResponse:
+async def list_profiles(request: Request) -> UserProfileListResponse:
     profiles = await run_in_threadpool(profile_store.list_profiles)
+    audit_log.record("pii_access", "list_profiles", actor=_client_ip(request),
+                     detail={"count": len(profiles)})
     return UserProfileListResponse(profiles=profiles)
 
 
 @router.delete("/profiles/{user_id}", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
-async def delete_profile(user_id: str) -> DeleteProfileResponse:
+async def delete_profile(user_id: str, request: Request) -> DeleteProfileResponse:
     deleted_count = await run_in_threadpool(profile_store.delete_user, user_id)
+    audit_log.record("erasure", "delete_profile", actor=_client_ip(request),
+                     subject=user_id, detail={"deleted": deleted_count})
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
 @router.delete("/profiles", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
-async def delete_profiles() -> DeleteProfileResponse:
+async def delete_profiles(request: Request) -> DeleteProfileResponse:
     deleted_count = await run_in_threadpool(profile_store.delete_all)
+    audit_log.record("erasure", "delete_all_profiles", actor=_client_ip(request),
+                     detail={"deleted": deleted_count})
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
 @router.post("/profiles/purge-expired", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
-async def purge_expired_profiles() -> DeleteProfileResponse:
+async def purge_expired_profiles(request: Request) -> DeleteProfileResponse:
     """Retention enforcement: delete profiles older than LALIGENCE_PROFILE_RETENTION_DAYS.
     No-op (0 deleted) when retention is disabled (0). Intended for a scheduled job."""
     deleted_count = await run_in_threadpool(
         profile_store.purge_expired_profiles, settings.profile_retention_days
     )
+    audit_log.record("retention", "purge_expired", actor=_client_ip(request),
+                     detail={"deleted": deleted_count, "retention_days": settings.profile_retention_days})
     return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
 
 
+@router.get("/audit", response_model=AuditListResponse, dependencies=[Depends(require_admin)])
+async def read_audit_log(limit: int = 100) -> AuditListResponse:
+    events = await run_in_threadpool(audit_log.list_events, max(1, min(limit, 500)))
+    return AuditListResponse(events=events)
+
+
+@router.get("/audit/verify", response_model=AuditVerifyResponse, dependencies=[Depends(require_admin)])
+async def verify_audit_log() -> AuditVerifyResponse:
+    result = await run_in_threadpool(audit_log.verify_chain)
+    return AuditVerifyResponse(**result)
+
+
 @router.post("/face-login", response_model=FaceLoginResponse, dependencies=[Depends(face_login_rate_limit)])
-async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
+async def face_login(request: Request, file: UploadFile = File(...)) -> FaceLoginResponse:
     started_at = time.perf_counter()
     content = await _read_upload(file)
     face_started_at = time.perf_counter()
@@ -610,10 +645,16 @@ async def face_login(file: UploadFile = File(...)) -> FaceLoginResponse:
             reason_codes.append("FACE_LOGIN_NO_MATCH")
 
     profile = match.profile if match else None
+    matched_user_id = profile.user_id if profile is not None else None
     if profile is not None and not settings.face_login_expose_pii:
         profile = _redact_profile(profile)
+    decision = Decision.passed if profile and not reason_codes else Decision.rejected
+    audit_log.record(
+        "auth", "face_login", actor=_client_ip(request), subject=matched_user_id,
+        detail={"decision": decision.value, "matched": profile is not None},
+    )
     return FaceLoginResponse(
-        decision=Decision.passed if profile and not reason_codes else Decision.rejected,
+        decision=decision,
         matched=profile is not None,
         match_score=match_score,
         passive_liveness_risk=round(passive_result.risk, 2) if passive_result else 1.0,

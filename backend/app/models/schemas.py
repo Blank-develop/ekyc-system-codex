@@ -153,6 +153,27 @@ class AuthUserInfo(BaseModel):
     role: str
 
 
+class AuditEventOut(BaseModel):
+    seq: int
+    event_time: datetime
+    event_type: str
+    actor: str | None = None
+    action: str
+    subject: str | None = None
+    detail: dict | None = None
+    entry_hash: str
+
+
+class AuditListResponse(BaseModel):
+    events: list[AuditEventOut] = Field(default_factory=list)
+
+
+class AuditVerifyResponse(BaseModel):
+    ok: bool
+    entries: int
+    broken_at: int | None = None
+
+
 class FaceLoginResponse(BaseModel):
     decision: Decision
     matched: bool
