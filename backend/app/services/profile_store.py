@@ -14,6 +14,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from sqlalchemy.types import JSON
 
 from app.services.crypto import get_template_cipher
+from app.services.template_protection import get_template_protector
 
 from app.core.config import get_settings
 from app.models.schemas import UserProfile, VerificationResult
@@ -112,11 +113,14 @@ class FaceProfileStore:
     def match(self, face_template: list[float], compare, threshold: float) -> FaceLoginMatch:
         best_record: dict | None = None
         best_score = 0.0
+        # Transform the probe into the same protected space as the stored templates
+        # (no-op when protection is disabled). Orthonormal -> scores are preserved.
+        probe = get_template_protector().protect(face_template)
         for record in self._active_records():
             stored_template = record.get("face_template")
             if not isinstance(stored_template, list):
                 continue
-            score = float(compare(stored_template, face_template))
+            score = float(compare(stored_template, probe))
             if score > best_score:
                 best_score = score
                 best_record = record
@@ -262,10 +266,12 @@ class FaceProfileStore:
         record.updated_at = updated_at
         record.consent_version = profile.consent_version
         record.consented_at = profile.consented_at
-        # Encrypt the biometric template at rest (no-op when no key is configured).
-        record.face_template = cipher.encrypt_template(face_template)
+        # Cancelable-template transform (no-op when no key), then encrypt at rest
+        # (no-op when no key). The raw biometric is never stored.
+        protected = get_template_protector().protect(face_template)
+        record.face_template = cipher.encrypt_template(protected)
         record.template_model = "opencv_yunet_sface"
-        record.template_dimensions = len(face_template)
+        record.template_dimensions = len(protected)
 
         if cipher.enabled:
             # Store PII encrypted; keep the plaintext columns null. passport_number_bidx
