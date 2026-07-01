@@ -64,9 +64,14 @@ Prioritized. Tier 1 items are blockers.
   expiry) are encrypted with authenticated symmetric encryption (Fernet) — the
   PII lives in an encrypted blob and `passport_number` keeps a **blind index**
   (keyed hash) so the one-document-one-profile rule still works; plaintext columns
-  are nulled. No-op for the demo; legacy plaintext rows stay readable. Still
-  needed: **KMS-managed keys** (not a bare env var) and protected/cancelable
-  templates (ISO/IEC 24745).
+  are nulled. No-op for the demo; legacy plaintext rows stay readable.
+  **Cancelable/renewable templates** (ISO/IEC 24745) are also available: when
+  `LALIGENCE_TEMPLATE_PROTECTION_KEY` is set, templates are transformed by a
+  key-derived **orthonormal projection** before encryption — matching scores are
+  preserved **exactly** (rotation preserves the dot product), the raw biometric is
+  never stored even after decrypt, and templates are **revocable/renewable** by
+  re-keying (and unlinkable across keys). Still needed: **KMS-managed keys** (not a
+  bare env var) and a fully one-way (irreversible) transform.
 - [~] **Consent, retention & deletion.** Each enrolled profile records the
   **consent terms version + timestamp** (`LALIGENCE_CONSENT_VERSION`).
   **Retention** auto-purge is available (`LALIGENCE_PROFILE_RETENTION_DAYS` +
@@ -153,6 +158,7 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | `LALIGENCE_AUTH_USERS` | Comma-separated `username:pbkdf2_hash:role` entries (generate a hash with `scripts/hash_password.py`). |
 | `LALIGENCE_JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes (default 60). |
 | `LALIGENCE_ENCRYPTION_KEY` | Fernet key — when set, biometric templates are encrypted at rest. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Unset = plaintext (dev/demo). |
+| `LALIGENCE_TEMPLATE_PROTECTION_KEY` | Enables cancelable/renewable templates (ISO/IEC 24745): a key-derived orthonormal transform of the template (accuracy-preserving). Re-key to revoke/renew (requires re-enrollment). Unset = raw template. |
 | `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
 | `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
 | `LALIGENCE_AUDIT_LOG_ENABLED` | Tamper-evident hash-chained audit log of auth/PII-access/admin/enrollment events. `true` (default). Keyed with `LALIGENCE_ENCRYPTION_KEY` when set. |

@@ -78,6 +78,12 @@ class Settings(BaseModel):
     # (dev/demo). Set in production. Generate:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     encryption_key: str = _str_env("LALIGENCE_ENCRYPTION_KEY", "")
+    # Cancelable/renewable biometric templates (ISO/IEC 24745). When set, stored
+    # face templates are transformed by a key-derived orthonormal projection
+    # (accuracy-preserving: matching scores are unchanged) so the raw biometric is
+    # never stored even after decryption, and templates can be revoked/renewed by
+    # re-keying (which requires re-enrollment). Unset = no-op (raw template).
+    template_protection_key: str = _str_env("LALIGENCE_TEMPLATE_PROTECTION_KEY", "")
     # Privacy: consent terms version recorded against each enrolled profile, and
     # data-retention period in days (0 = retain indefinitely; >0 enables purge of
     # profiles whose last activity is older than the window).

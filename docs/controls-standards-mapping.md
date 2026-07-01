@@ -63,9 +63,9 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Confidentiality** of stored templates | Fernet (AES-128-CBC + HMAC) encryption at rest | ✓ | `services/crypto.py`, `test_crypto.py`, `LALIGENCE_ENCRYPTION_KEY` |
 | PII confidentiality | PII encrypted blob + plaintext columns nulled | ✓ | `services/profile_store.py` (`_apply_profile`), `test_privacy.py` |
 | Queries without exposing the value | **Blind index** (keyed HMAC) for passport uniqueness | ✓ | `crypto.py` (`blind_index`), `test_crypto.py` |
-| **Irreversibility** (can't reconstruct biometric) | Store embeddings, not images; encrypted | ◐ | `profile_store.py` |
-| **Unlinkability / renewability** (cancelable templates) | Not implemented (encryption ≠ cancelable template) | ○ | Gap — needs a template-protection scheme |
-| **Key management** (protect the key) | Env-var key today; KMS/Vault planned | ◐ | `docs/in-region-hosting-plan.md` §4 |
+| **Irreversibility** (can't reconstruct biometric) | Embeddings not images; key-derived transform + encryption so raw biometric never stored | ◐ | `services/template_protection.py`, `crypto.py` |
+| **Unlinkability / renewability** (cancelable templates) | **Key-derived orthonormal transform** — revocable/renewable by re-keying, unlinkable across keys, score-preserving | ✓ | `services/template_protection.py`, `tests/test_template_protection.py`, `LALIGENCE_TEMPLATE_PROTECTION_KEY` |
+| **Key management** (protect the key) | Env-var keys today; KMS/Vault planned | ◐ | `docs/in-region-hosting-plan.md` §4 |
 
 ## 5. ISO/IEC 27001 — ISMS (Annex A themes)
 
@@ -119,7 +119,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | NIST 800-63A (IAL2) | ◐ strong | Independent assessment; end-to-end FRR on genuine pairs |
 | NIST 800-63B (authenticator) | ◐ | PAD performance evidence |
 | ISO/IEC 30107-3 (PAD) | ◐ | ⧉ Accredited-lab APCER/BPCER |
-| ISO/IEC 24745 (template protection) | ◐ | Cancelable/renewable templates; KMS |
+| ISO/IEC 24745 (template protection) | ◐ strong | Cancelable/renewable templates **done**; remaining: KMS keys, one-way transform |
 | ISO/IEC 27001 (ISMS) | ◐ | Audit logging, full ISMS docs, internal audit |
 | GDPR / local law | ◐ | Consumer consent UI, residency execution, DPIA |
 | FATF (KYC) | ◐ | (Screening handled upstream) |
