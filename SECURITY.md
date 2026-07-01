@@ -49,10 +49,14 @@ required before processing real identities in production.
 Prioritized. Tier 1 items are blockers.
 
 ### Tier 1 — blockers
-- [~] **API authentication & authorization.** Optional API-key gate on all `/api`
-  endpoints (`LALIGENCE_API_KEYS`, `X-API-Key` header) — off for the public demo,
-  required in production / for partner integrations. Still needed: per-user
-  OAuth2/JWT for the web frontend, RBAC, and mTLS for high-trust partners.
+- [~] **API authentication & authorization.** Two layers: (1) an optional API-key
+  gate on all `/api` endpoints (`LALIGENCE_API_KEYS`, `X-API-Key`) for partner
+  integrations; (2) **per-user OAuth2 password → JWT** (`LALIGENCE_JWT_SECRET`,
+  `POST /api/auth/token`, `GET /api/auth/me`) with **RBAC** — admin endpoints
+  accept a Bearer token whose role is `admin` (or the legacy `X-Admin-Token`).
+  Passwords are PBKDF2-hashed; tokens are HS256, signed, expiring. Both are off in
+  the public demo. Still needed: a **DB-backed user store** with self-service
+  signup, **refresh tokens** / rotation, and **mTLS** for high-trust partners.
 - [~] **Encrypt biometric templates + PII at rest.** When `LALIGENCE_ENCRYPTION_KEY`
   is set, face templates **and** PII (name, DOB, nationality, passport number,
   expiry) are encrypted with authenticated symmetric encryption (Fernet) — the
@@ -128,6 +132,9 @@ Prioritized. Tier 1 items are blockers.
 | --- | --- |
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
 | `LALIGENCE_API_KEYS` | Comma-separated API keys. When set, all `/api` endpoints require a matching `X-API-Key` header. Unset = open (public demo). |
+| `LALIGENCE_JWT_SECRET` | Enables per-user OAuth2/JWT auth. When set, `POST /api/auth/token` issues signed access tokens and admin endpoints accept an `admin`-role Bearer token. Generate: `openssl rand -hex 32`. Unset = JWT auth off. |
+| `LALIGENCE_AUTH_USERS` | Comma-separated `username:pbkdf2_hash:role` entries (generate a hash with `scripts/hash_password.py`). |
+| `LALIGENCE_JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes (default 60). |
 | `LALIGENCE_ENCRYPTION_KEY` | Fernet key — when set, biometric templates are encrypted at rest. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Unset = plaintext (dev/demo). |
 | `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
 | `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
