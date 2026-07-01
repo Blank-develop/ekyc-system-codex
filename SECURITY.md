@@ -131,6 +131,10 @@ Prioritized. Tier 1 items are blockers.
 > Do not claim NIST, ISO, bank-grade, or government certification unless an
 > independent assessment has been completed.
 
+For a clause-by-clause map of **which control satisfies which requirement**, with
+evidence (files/tests/config) and honest status, see
+**`docs/controls-standards-mapping.md`** (the Phase 3 traceability matrix).
+
 ## Security-relevant configuration
 
 | Env var | Purpose |
