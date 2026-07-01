@@ -78,7 +78,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Data masking** (A.8.11) | Face-login redaction | ✓ | `test_face_login_redaction.py` |
 | **Rate limiting / DoS** (A.8.6 capacity) | Per-IP + face-login throttles | ◐ | `services/rate_limit.py` |
 | **Backup** (A.8.13) | Encrypted in-region backups | ○ | Planned — `docs/in-region-hosting-plan.md` §5 |
-| ISMS policies, risk assessment, SoA, internal audit | Documentation started (SECURITY.md), not a full ISMS | ○ | Phase 3 continues |
+| ISMS policies, risk assessment, SoA, internal audit | **Policy set drafted** (data-protection/retention, DPIA, incident response); SoA + internal audit still to do | ◐ | `docs/policies/`, `SECURITY.md` |
 
 ## 6. GDPR / Data-Protection Law (biometric = special category)
 
@@ -132,7 +132,7 @@ of an audit: "for requirement X, show me the control and the proof."
 3. **Independent PAD evaluation** (ISO 30107-3) and an **IAL2 assessment** (Kantara) — ⧉ external, budgeted (Phase 4).
 4. **End-to-end FRR** on genuine document↔selfie pairs (the real accuracy number) — `docs/dataset-collection-plan.md`.
 5. **Consumer consent UI** + **self-service erasure/export**, and **execute** in-region hosting.
-6. **Full ISMS documentation** (policies, risk assessment, Statement of Applicability, internal audit).
+6. **Full ISMS documentation** — core policies **drafted** (`docs/policies/`: data-protection/retention, DPIA, incident response). Remaining: Statement of Applicability, risk-treatment plan, and internal audit.
 
 ---
 

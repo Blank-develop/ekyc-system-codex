@@ -138,7 +138,9 @@ Prioritized. Tier 1 items are blockers.
 
 For a clause-by-clause map of **which control satisfies which requirement**, with
 evidence (files/tests/config) and honest status, see
-**`docs/controls-standards-mapping.md`** (the Phase 3 traceability matrix).
+**`docs/controls-standards-mapping.md`** (the Phase 3 traceability matrix). The
+supporting **ISMS policy set** — Data Protection & Retention Policy, DPIA, and
+Incident Response Plan — is in **`docs/policies/`**.
 
 ## Security-relevant configuration
 
