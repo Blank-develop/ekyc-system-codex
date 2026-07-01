@@ -86,10 +86,11 @@ of an audit: "for requirement X, show me the control and the proof."
 
 | Requirement | Control | Status | Evidence |
 | --- | --- | --- | --- |
-| **Lawful basis / explicit consent** for special-category data | Consent version + timestamp recorded per profile | ◐ | `test_privacy.py`, `LALIGENCE_CONSENT_VERSION` (backend record; consumer consent **UI** still needed) |
+| **Lawful basis / explicit consent** for special-category data | **Consent gate UI** (versioned opt-in via `GET /api/consent`) + version/timestamp recorded per profile | ✓ | `api/routes.py` (`/consent`), `test_privacy.py`, `test_self_service.py`, `LALIGENCE_CONSENT_VERSION` |
 | **Data minimization** | No raw media stored; embeddings only; redaction | ✓ | `profile_store.py`, `test_face_login_redaction.py` |
 | **Storage limitation / retention** | Retention window + auto-purge endpoint | ✓ | `purge_expired_profiles`, `test_privacy.py`, `LALIGENCE_PROFILE_RETENTION_DAYS` |
-| **Right to erasure** | Admin delete endpoint (+ planned self-service) | ◐ | `test_privacy.py`, admin `DELETE /api/profiles/{user_id}` |
+| **Right to erasure** | **Self-service** (face-authenticated `POST /api/self-service/delete`) + admin delete | ✓ | `test_self_service.py`, admin `DELETE /api/profiles/{user_id}` |
+| **Right of access / portability** | **Self-service export** — face-authenticated `POST /api/self-service/export` returns the owner's data (JSON download) | ✓ | `test_self_service.py` |
 | **Security of processing** (Art. 32) | Encryption, access control, throttling | ✓ | §4, §5 |
 | **Records of processing / accountability** (Art. 30) | Tamper-evident audit log of PII access + processing actions | ◐ | `services/audit.py`, `tests/test_audit.py` |
 | **Data residency / transfers** | In-region hosting **plan** written; not executed | ○ | `docs/in-region-hosting-plan.md` |

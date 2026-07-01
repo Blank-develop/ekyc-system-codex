@@ -5,6 +5,7 @@ import {
   Camera,
   Check,
   ChevronRight,
+  Download,
   FileImage,
   Fingerprint,
   Hand,
@@ -15,6 +16,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserPlus,
   Upload,
@@ -25,11 +27,16 @@ import logoUrl from "./assets/logo.png";
 import { ActiveLivenessCapture } from "./components/ActiveLivenessCapture";
 import { CameraCapture } from "./components/CameraCapture";
 import { HandGestureCapture } from "./components/HandGestureCapture";
-import { api, Challenge, DocumentType, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
+import { api, Challenge, ConsentInfo, DocumentType, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
 import { optimizeImageForUpload } from "./lib/image";
 
 type StepKey = "document" | "liveness" | "gesture" | "selfie" | "result";
-type Screen = "intro" | "verify" | "face-login" | "payment";
+type Screen = "intro" | "verify" | "face-login" | "payment" | "manage-data";
+type ManageResult =
+  | { kind: "export-ok"; message: string }
+  | { kind: "delete-ok"; message: string }
+  | { kind: "error"; message: string }
+  | null;
 type DocumentNotice = {
   type: "success" | "failure";
   title: string;
@@ -134,6 +141,8 @@ export function App() {
   const [enrollmentNotice, setEnrollmentNotice] = useState<EnrollmentNotice>(null);
   const [faceLoginBusy, setFaceLoginBusy] = useState(false);
   const [faceLoginResult, setFaceLoginResult] = useState<FaceLoginResponse | null>(null);
+  const [manageBusy, setManageBusy] = useState(false);
+  const [manageResult, setManageResult] = useState<ManageResult>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Starting verification session");
   const [toast, setToast] = useState<{ id: number; kind: "success" | "error" | "info"; title: string; message?: string } | null>(null);
@@ -449,6 +458,49 @@ export function App() {
     }
   };
 
+  const exportMyData = async (blob: Blob) => {
+    try {
+      setManageBusy(true);
+      setManageResult(null);
+      const res = await api.exportMyData(blob);
+      if (res.verified && res.profile) {
+        const json = new Blob([JSON.stringify(res.profile, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(json);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `kyron-my-data-${res.profile.user_id}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        setManageResult({ kind: "export-ok", message: "Face verified — your data has been downloaded as a JSON file." });
+      } else {
+        setManageResult({ kind: "error", message: `Could not verify your face${res.reason_codes.length ? ` (${res.reason_codes.join(", ")})` : ""}.` });
+      }
+    } catch (err) {
+      setManageResult({ kind: "error", message: err instanceof Error ? err.message : "Export failed." });
+    } finally {
+      setManageBusy(false);
+    }
+  };
+
+  const deleteMyData = async (blob: Blob) => {
+    try {
+      setManageBusy(true);
+      setManageResult(null);
+      const res = await api.deleteMyData(blob);
+      if (res.verified && res.deleted) {
+        setManageResult({ kind: "delete-ok", message: "Face verified — your enrolled data has been permanently deleted." });
+      } else if (res.verified) {
+        setManageResult({ kind: "error", message: "Verified, but no enrolled data was found to delete." });
+      } else {
+        setManageResult({ kind: "error", message: `Could not verify your face${res.reason_codes.length ? ` (${res.reason_codes.join(", ")})` : ""}.` });
+      }
+    } catch (err) {
+      setManageResult({ kind: "error", message: err instanceof Error ? err.message : "Deletion failed." });
+    } finally {
+      setManageBusy(false);
+    }
+  };
+
   const goToStep = (step: StepKey) => {
     if (canAccessStep(step, result)) {
       setActiveStep(step);
@@ -467,6 +519,22 @@ export function App() {
         onGenerateUserId={() => setUserId(createDemoUserId())}
         onFaceLogin={() => setScreen("face-login")}
         onPayment={() => setScreen("payment")}
+        onManageData={() => {
+          setManageResult(null);
+          setScreen("manage-data");
+        }}
+      />
+    );
+  }
+
+  if (screen === "manage-data") {
+    return (
+      <ManageDataScreen
+        busy={manageBusy}
+        result={manageResult}
+        onExport={exportMyData}
+        onDelete={deleteMyData}
+        onBack={() => setScreen("intro")}
       />
     );
   }
@@ -660,7 +728,8 @@ function IntroScreen({
   onGenerateUserId,
   onStart,
   onFaceLogin,
-  onPayment
+  onPayment,
+  onManageData
 }: {
   userId: string;
   onUserIdChange: (value: string) => void;
@@ -668,9 +737,30 @@ function IntroScreen({
   onStart: () => void;
   onFaceLogin: () => void;
   onPayment: () => void;
+  onManageData: () => void;
 }) {
   const [showNewUserForm, setShowNewUserForm] = useState(false);
+  const [consent, setConsent] = useState<ConsentInfo | null>(null);
+  const [consented, setConsented] = useState(false);
   const canStart = userId.trim().length > 0;
+
+  useEffect(() => {
+    api
+      .getConsent()
+      .then((info) => {
+        setConsent(info);
+        setConsented(localStorage.getItem(`kyron.consent.${info.version}`) === "true");
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const toggleConsent = (checked: boolean) => {
+    setConsented(checked);
+    if (!consent) return;
+    const key = `kyron.consent.${consent.version}`;
+    if (checked) localStorage.setItem(key, "true");
+    else localStorage.removeItem(key);
+  };
   const openNewUserForm = () => {
     if (!canStart) {
       onGenerateUserId();
@@ -689,6 +779,18 @@ function IntroScreen({
             face matching, and clear risk decisions in one IAL2-aligned workflow.
           </p>
           <DemoWarning compact />
+          <label className="consent-gate">
+            <input
+              type="checkbox"
+              checked={consented}
+              onChange={(event) => toggleConsent(event.target.checked)}
+            />
+            <span>
+              {consent?.notice ??
+                "I consent to biometric processing for identity verification."}
+              {consent && <em className="consent-version"> (terms {consent.version})</em>}
+            </span>
+          </label>
           {showNewUserForm ? (
             <div className="new-user-panel">
               <label className="user-id-field">
@@ -701,7 +803,7 @@ function IntroScreen({
                 />
               </label>
               <div className="intro-actions">
-                <button className="primary-button intro-start" type="button" onClick={onStart} disabled={!canStart}>
+                <button className="primary-button intro-start" type="button" onClick={onStart} disabled={!canStart || !consented}>
                   Start verification
                   <ArrowRight size={18} />
                 </button>
@@ -717,20 +819,25 @@ function IntroScreen({
             </div>
           ) : (
             <div className="intro-actions">
-              <button className="primary-button intro-start" type="button" onClick={onPayment}>
+              <button className="primary-button intro-start" type="button" onClick={onPayment} disabled={!consented}>
                 <Send size={18} />
                 Face Pay transfer
               </button>
-              <button className="secondary-button intro-start" type="button" onClick={openNewUserForm}>
+              <button className="secondary-button intro-start" type="button" onClick={openNewUserForm} disabled={!consented}>
                 <UserPlus size={18} />
                 New user signup
               </button>
-              <button className="text-action-button" type="button" onClick={onFaceLogin}>
+              <button className="text-action-button" type="button" onClick={onFaceLogin} disabled={!consented}>
                 <KeyRound size={16} />
                 Face login only
               </button>
             </div>
           )}
+          {!consented && <p className="consent-hint">Please accept the notice above to continue.</p>}
+          <button className="text-action-button intro-manage" type="button" onClick={onManageData}>
+            <ShieldCheck size={16} />
+            Manage my data (export or delete)
+          </button>
         </div>
 
         <div className="intro-visual" aria-hidden="true">
@@ -856,6 +963,110 @@ function FaceLoginScreen({
           maxCaptureWidth={720}
           jpegQuality={0.84}
         />
+      </section>
+    </main>
+  );
+}
+
+function ManageDataScreen({
+  busy,
+  result,
+  onExport,
+  onDelete,
+  onBack
+}: {
+  busy: boolean;
+  result: ManageResult;
+  onExport: (blob: Blob) => void;
+  onDelete: (blob: Blob) => void;
+  onBack: () => void;
+}) {
+  const [action, setAction] = useState<"export" | "delete" | null>(null);
+  const handleCapture = (blob: Blob) => {
+    if (action === "export") onExport(blob);
+    else if (action === "delete") onDelete(blob);
+  };
+  const ok = result?.kind === "export-ok" || result?.kind === "delete-ok";
+  return (
+    <main className="login-shell">
+      <section className="login-panel" aria-labelledby="manage-title">
+        <button className="secondary-button back-button" type="button" onClick={onBack}>
+          <ArrowLeft size={18} />
+          Back
+        </button>
+        <div className="login-copy">
+          <div className="intro-brand-inline">
+            <img src={logoUrl} alt="Kyron" />
+          </div>
+          <p className="eyebrow">Your data rights</p>
+          <h1 id="manage-title">Manage my data</h1>
+          <p>
+            Verify with a live selfie to export a copy of your enrolled data, or
+            permanently delete it. Your face proves it&rsquo;s you — no one else can
+            access your record.
+          </p>
+
+          {!action && (
+            <div className="intro-actions">
+              <button className="primary-button intro-start" type="button" onClick={() => setAction("export")}>
+                <Download size={18} />
+                Export my data
+              </button>
+              <button className="secondary-button intro-start" type="button" onClick={() => setAction("delete")}>
+                <Trash2 size={18} />
+                Delete my data
+              </button>
+            </div>
+          )}
+
+          {action && (
+            <>
+              <div className={`manage-action-banner manage-action-${action}`}>
+                {action === "export" ? <Download size={16} /> : <ShieldAlert size={16} />}
+                <span>
+                  {action === "export"
+                    ? "Capture a live selfie to download your data."
+                    : "Capture a live selfie to permanently delete your data. This cannot be undone."}
+                </span>
+              </div>
+              <button className="text-action-button" type="button" onClick={() => setAction(null)}>
+                Choose a different action
+              </button>
+            </>
+          )}
+
+          {busy && (
+            <div className="selfie-loading" role="status" aria-live="polite">
+              <span />
+              {action === "delete" ? "Verifying and deleting" : "Verifying and exporting"}
+            </div>
+          )}
+
+          {result && (
+            <div className={`document-notice document-notice-${ok ? "success" : "failure"}`} role="status">
+              {ok ? <UserCheck size={20} /> : <ShieldAlert size={20} />}
+              <div>
+                <strong>
+                  {result.kind === "export-ok"
+                    ? "Data exported"
+                    : result.kind === "delete-ok"
+                      ? "Data deleted"
+                      : "Not verified"}
+                </strong>
+                <p>{result.message}</p>
+              </div>
+            </div>
+          )}
+        </div>
+        {action && (
+          <CameraCapture
+            label={action === "export" ? "Selfie to export your data" : "Selfie to delete your data"}
+            overlay="face"
+            onCapture={handleCapture}
+            maxCaptureWidth={720}
+            jpegQuality={0.84}
+          />
+        )}
       </section>
     </main>
   );

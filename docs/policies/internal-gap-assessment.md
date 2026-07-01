@@ -112,7 +112,7 @@ Material controls (representative; a full 93-control SoA is a Phase 3 follow-up)
 | G6 | **Independent PAD evaluation** | ISO 30107-3 | 🟠 High | ⧉/$$ | 4 |
 | G7 | **Independent IAL2 assessment** | NIST 800-63A | 🟠 High | ⧉/$$ | 4 |
 | G8 | **End-to-end FRR** on genuine doc↔selfie pairs | NIST 800-63A | 🟠 High | M | 1 |
-| G9 | **Consumer consent UI** + self-service erasure/export | GDPR | 🟡 Medium | M | 2/3 |
+| G9 | ~~Consumer consent UI + self-service erasure/export~~ **DONE** — consent gate + face-authenticated self-service export/delete | GDPR | 🟢 Closed | — | ✓ |
 | G10 | **Audit → external WORM/SIEM** + monitoring/alerting | ISO A.8.15-16 | 🟡 Medium | M | 3 |
 | G11 | ~~Session security~~ **DONE** — unguessable + short-lived (idle/absolute TTL, 410 on expiry) + client-bound (`X-Session-Token`) | NIST 800-63B | 🟢 Closed | — | ✓ |
 | G12 | **Injection defense** / device attestation | ISO 30107-4 | 🟡 Medium | L | 4 |
@@ -136,9 +136,9 @@ security and G13 SCA — done. G2 secret sourcing + rotation and G14 secrets mgm
 the sourcing layer is done; remaining is wiring a managed KMS.)*
 
 **Next (before/at launch) — Phase 2–3**
-G8 end-to-end FRR · G9 consent UI + self-service erasure · G10 SIEM/monitoring ·
-G16 DB-backed users/refresh tokens · G15 image hardening · G18 finish ISMS
-artifacts. *(G5 cancelable templates — done.)*
+G8 end-to-end FRR · G10 SIEM/monitoring · G16 DB-backed users/refresh tokens ·
+G15 image hardening · G18 finish ISMS artifacts. *(G5 cancelable templates, G9
+consent UI + self-service data rights — done.)*
 
 **Later (independent assessment) — Phase 4**
 G6 PAD lab (ISO 30107-3) · G7 IAL2 assessment · G17 pen test + privacy review ·
