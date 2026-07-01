@@ -3,10 +3,12 @@ import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.schemas import (
+    AuthUserInfo,
     CompleteChallengeRequest,
     CreateVerificationRequest,
     DeleteProfileResponse,
@@ -15,9 +17,11 @@ from app.models.schemas import (
     FaceLoginResponse,
     FraudSignal,
     SelfieAnalysisRequest,
+    TokenResponse,
     UserProfileListResponse,
     VerificationResult,
 )
+from app.services import auth as auth_service
 from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
@@ -443,6 +447,56 @@ async def enroll_face(session_id: UUID) -> FaceEnrollmentResponse:
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token", auto_error=False)
+
+
+def _auth_users() -> dict[str, auth_service.AuthUser]:
+    return auth_service.load_users(settings.auth_users)
+
+
+@router.post("/auth/token", response_model=TokenResponse)
+async def issue_token(form: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
+    """OAuth2 password grant: exchange username + password for a signed JWT."""
+    if not settings.jwt_secret:
+        raise HTTPException(status_code=503, detail="Authentication is not configured.")
+    user = await run_in_threadpool(
+        auth_service.authenticate, _auth_users(), form.username, form.password
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = auth_service.create_access_token(
+        settings.jwt_secret, user.username, user.role, settings.jwt_expire_minutes
+    )
+    return TokenResponse(
+        access_token=token,
+        expires_in=settings.jwt_expire_minutes * 60,
+        role=user.role,
+    )
+
+
+def get_current_user(token: str | None = Depends(oauth2_scheme)) -> auth_service.AuthUser:
+    """Resolve the caller from a Bearer JWT. 401 when missing/invalid/expired."""
+    if not settings.jwt_secret:
+        raise HTTPException(status_code=503, detail="Authentication is not configured.")
+    payload = auth_service.decode_token(settings.jwt_secret, token) if token else None
+    if not payload:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return auth_service.AuthUser(username=payload.get("sub", ""), role=payload.get("role", "user"))
+
+
+@router.get("/auth/me", response_model=AuthUserInfo)
+async def read_current_user(user: auth_service.AuthUser = Depends(get_current_user)) -> AuthUserInfo:
+    return AuthUserInfo(username=user.username, role=user.role)
+
+
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     """Gate all /api endpoints behind an API key when one or more are configured.
     Open (no-op) when LALIGENCE_API_KEYS is unset, so the public demo still works."""
@@ -453,15 +507,29 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing API key. Send it in the X-API-Key header.")
 
 
-def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
-    """Guard the profile admin endpoints. Fail-closed: disabled unless a token
-    is configured, and then the X-Admin-Token header must match it."""
+def require_admin(
+    x_admin_token: str | None = Header(default=None),
+    token: str | None = Depends(oauth2_scheme),
+) -> None:
+    """Guard the profile admin endpoints. Fail-closed: disabled unless a static
+    admin token (X-Admin-Token) or JWT auth (a Bearer token with role "admin") is
+    configured. Either credential grants access."""
     expected = settings.admin_api_token
+    jwt_enabled = bool(settings.jwt_secret)
+    # JWT path: a valid Bearer token carrying the admin role.
+    if jwt_enabled and token:
+        payload = auth_service.decode_token(settings.jwt_secret, token)
+        if payload and payload.get("role") == "admin":
+            return
     if not expected:
+        if jwt_enabled:
+            raise HTTPException(status_code=401, detail="Admin privileges required.")
         raise HTTPException(
             status_code=403,
-            detail="Admin endpoints are disabled. Set LALIGENCE_ADMIN_API_TOKEN to enable them.",
+            detail="Admin endpoints are disabled. Set LALIGENCE_ADMIN_API_TOKEN or "
+            "LALIGENCE_JWT_SECRET with an admin user to enable them.",
         )
+    # Static-token path (backward compatible).
     if not x_admin_token or not secrets.compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing admin token.")
 

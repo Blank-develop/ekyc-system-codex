@@ -141,6 +141,18 @@ class DeleteProfileResponse(BaseModel):
     deleted_count: int = 0
 
 
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    role: str
+
+
+class AuthUserInfo(BaseModel):
+    username: str
+    role: str
+
+
 class FaceLoginResponse(BaseModel):
     decision: Decision
     matched: bool

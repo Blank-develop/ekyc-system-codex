@@ -66,6 +66,14 @@ class Settings(BaseModel):
     # (comma-separated), callers must send a matching key in the X-API-Key header.
     # Unset = open (public demo). Set in production / for partner integrations.
     api_keys: tuple[str, ...] = _csv_env("LALIGENCE_API_KEYS", ())
+    # Per-user OAuth2 password flow -> JWT (for the web console / operators). When
+    # LALIGENCE_JWT_SECRET is set, POST /api/auth/token issues signed access tokens
+    # and admin endpoints also accept a Bearer token whose role is "admin".
+    # Users: LALIGENCE_AUTH_USERS = "user:pbkdf2_hash:role,..." (generate a hash with
+    # scripts/hash_password.py). Unset = JWT auth disabled (public demo).
+    jwt_secret: str = _str_env("LALIGENCE_JWT_SECRET", "")
+    jwt_expire_minutes: int = _int_env("LALIGENCE_JWT_EXPIRE_MINUTES", 60)
+    auth_users: tuple[str, ...] = _csv_env("LALIGENCE_AUTH_USERS", ())
     # Fernet key for encrypting biometric templates at rest. Unset = plaintext
     # (dev/demo). Set in production. Generate:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
