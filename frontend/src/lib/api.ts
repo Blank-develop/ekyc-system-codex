@@ -25,6 +25,27 @@ export interface DeleteProfileResponse {
   deleted_count: number;
 }
 
+export interface AuditEvent {
+  seq: number;
+  event_time: string;
+  event_type: string;
+  actor: string | null;
+  action: string;
+  subject: string | null;
+  detail: Record<string, unknown> | null;
+  entry_hash: string;
+}
+
+export interface AuditListResponse {
+  events: AuditEvent[];
+}
+
+export interface AuditVerifyResponse {
+  ok: boolean;
+  entries: number;
+  broken_at: number | null;
+}
+
 export interface Challenge {
   id: string;
   type: ChallengeType;
@@ -298,5 +319,11 @@ export const api = {
     request<DeleteProfileResponse>("/api/profiles/purge-expired", {
       method: "POST",
       retries: 1
-    })
+    }),
+
+  listAudit: (limit = 100) =>
+    request<AuditListResponse>(`/api/audit?limit=${limit}`, { retries: 1 }),
+
+  verifyAudit: () =>
+    request<AuditVerifyResponse>("/api/audit/verify", { retries: 1 })
 };

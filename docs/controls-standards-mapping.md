@@ -74,7 +74,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Access control** (A.5.15–18) | API-key gate + per-user OAuth2/JWT + RBAC + fail-closed admin | ✓ | `services/auth.py`, `test_auth.py`, `test_admin_endpoints.py`, `test_api_auth.py` |
 | **Cryptography** (A.8.24) | Encryption at rest; TLS/HSTS in hosted deploys | ✓ | `crypto.py`, `deploy/digitalocean/` (Caddy) |
 | **Secure development** (A.8.25–28) | Input validation, upload guards, tests in CI | ◐ | upload allowlist/size cap in `api/routes.py`; test suite |
-| **Logging & monitoring** (A.8.15–16) | Tamper-evident audit log of PII access + decisions | ○ | Gap — `SECURITY.md` Tier 3 |
+| **Logging & monitoring** (A.8.15–16) | **Tamper-evident hash-chained audit log** of auth, PII access, admin actions, enrollment; integrity-verify endpoint | ◐ | `services/audit.py`, `tests/test_audit.py`, `GET /api/audit/verify` |
 | **Data masking** (A.8.11) | Face-login redaction | ✓ | `test_face_login_redaction.py` |
 | **Rate limiting / DoS** (A.8.6 capacity) | Per-IP + face-login throttles | ◐ | `services/rate_limit.py` |
 | **Backup** (A.8.13) | Encrypted in-region backups | ○ | Planned — `docs/in-region-hosting-plan.md` §5 |
@@ -89,6 +89,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Storage limitation / retention** | Retention window + auto-purge endpoint | ✓ | `purge_expired_profiles`, `test_privacy.py`, `LALIGENCE_PROFILE_RETENTION_DAYS` |
 | **Right to erasure** | Admin delete endpoint (+ planned self-service) | ◐ | `test_privacy.py`, admin `DELETE /api/profiles/{user_id}` |
 | **Security of processing** (Art. 32) | Encryption, access control, throttling | ✓ | §4, §5 |
+| **Records of processing / accountability** (Art. 30) | Tamper-evident audit log of PII access + processing actions | ◐ | `services/audit.py`, `tests/test_audit.py` |
 | **Data residency / transfers** | In-region hosting **plan** written; not executed | ○ | `docs/in-region-hosting-plan.md` |
 | **Breach notification**, DPIA | Not documented | ○ | Phase 3/4 |
 
@@ -126,7 +127,7 @@ of an audit: "for requirement X, show me the control and the proof."
 
 ## Top gaps to close next (Phase 3 → 4)
 
-1. **Audit logging** (tamper-evident): PII access + every verification decision — ISO 27001 & GDPR Art. 30/32.
+1. ~~Audit logging (tamper-evident)~~ — **done** (`services/audit.py`, hash-chained + integrity-verify). Remaining: ship to an external WORM/SIEM sink and cover per-step decisions.
 2. **Cancelable/renewable biometric templates** (ISO 24745) beyond encryption; **KMS-managed keys**.
 3. **Independent PAD evaluation** (ISO 30107-3) and an **IAL2 assessment** (Kantara) — ⧉ external, budgeted (Phase 4).
 4. **End-to-end FRR** on genuine document↔selfie pairs (the real accuracy number) — `docs/dataset-collection-plan.md`.

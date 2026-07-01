@@ -83,6 +83,10 @@ class Settings(BaseModel):
     # profiles whose last activity is older than the window).
     consent_version: str = _str_env("LALIGENCE_CONSENT_VERSION", "2026-06-v1")
     profile_retention_days: int = _int_env("LALIGENCE_PROFILE_RETENTION_DAYS", 0)
+    # Tamper-evident audit log (hash-chained). Keyed with a key derived from
+    # LALIGENCE_ENCRYPTION_KEY when set. On by default; records auth, PII access,
+    # admin actions, and identity enrollment/decisions (no raw PII/biometrics).
+    audit_log_enabled: bool = _bool_env("LALIGENCE_AUDIT_LOG_ENABLED", True)
     # Face login is unauthenticated, so by default it returns a redacted profile
     # (no full document number / DOB / expiry). Enable only in trusted/authenticated
     # deployments where returning the full identity to the caller is intended.

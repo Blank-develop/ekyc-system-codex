@@ -111,8 +111,13 @@ Prioritized. Tier 1 items are blockers.
 - [ ] Strict **Content-Security-Policy**; verify TLS configuration.
 - [ ] **PostgreSQL** not publicly exposed, TLS in transit, encrypted at rest,
   least-privilege DB user, encrypted backups.
-- [ ] **Audit logging** (tamper-evident): PII access + every verification
-  decision and reason codes.
+- [~] **Audit logging** (tamper-evident): hash-chained append-only trail
+  (`services/audit.py`) of auth events, PII access, admin actions, and identity
+  enrollment/decisions — each entry's hash covers the previous, so edits/deletes
+  are detectable via `GET /api/audit/verify`; keyed (HMAC) when
+  `LALIGENCE_ENCRYPTION_KEY` is set. No raw PII/biometrics logged. Viewable + a
+  one-click integrity check in the staff console. Still needed: ship logs to an
+  external WORM/SIEM sink, and cover per-step verification decisions.
 - [ ] **Monitoring/alerting** (SIEM), anomaly detection, patch management.
 - [ ] **Independent penetration test + privacy review** before launch.
 - [ ] **Incident-response & breach-notification** plan (biometric breaches are
@@ -147,6 +152,7 @@ evidence (files/tests/config) and honest status, see
 | `LALIGENCE_ENCRYPTION_KEY` | Fernet key — when set, biometric templates are encrypted at rest. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Unset = plaintext (dev/demo). |
 | `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
 | `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
+| `LALIGENCE_AUDIT_LOG_ENABLED` | Tamper-evident hash-chained audit log of auth/PII-access/admin/enrollment events. `true` (default). Keyed with `LALIGENCE_ENCRYPTION_KEY` when set. |
 | `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
 | `LALIGENCE_TRUST_PROXY_HEADERS` | `true` behind a trusted proxy (HF/Cloudflare) so client IP comes from `CF-Connecting-IP` / `X-Forwarded-For` for per-client throttling. |
 | `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |

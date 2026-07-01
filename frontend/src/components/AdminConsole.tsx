@@ -1,7 +1,7 @@
-import { LockKeyhole, LogOut, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { LockKeyhole, LogOut, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import logoUrl from "../assets/logo.png";
-import { AuthUserInfo, UserProfile, api } from "../lib/api";
+import { AuditEvent, AuditVerifyResponse, AuthUserInfo, UserProfile, api } from "../lib/api";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../lib/auth";
 
 type Status = { kind: "error" | "success"; message: string } | null;
@@ -15,12 +15,26 @@ export function AdminConsole() {
   const [status, setStatus] = useState<Status>(null);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [auditVerify, setAuditVerify] = useState<AuditVerifyResponse | null>(null);
 
   const signOut = useCallback((message?: string) => {
     clearAuthToken();
     setUser(null);
     setProfiles([]);
+    setAudit([]);
+    setAuditVerify(null);
     if (message) setStatus({ kind: "error", message });
+  }, []);
+
+  const loadAudit = useCallback(async () => {
+    try {
+      const [list, verify] = await Promise.all([api.listAudit(50), api.verifyAudit()]);
+      setAudit(list.events);
+      setAuditVerify(verify);
+    } catch {
+      // Non-fatal: the profiles view is the primary console. Leave audit empty.
+    }
   }, []);
 
   const loadProfiles = useCallback(async () => {
@@ -56,8 +70,11 @@ export function AdminConsole() {
   }, []);
 
   useEffect(() => {
-    if (user) void loadProfiles();
-  }, [user, loadProfiles]);
+    if (user) {
+      void loadProfiles();
+      void loadAudit();
+    }
+  }, [user, loadProfiles, loadAudit]);
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
@@ -88,6 +105,7 @@ export function AdminConsole() {
       await api.deleteProfile(profile.user_id);
       setStatus({ kind: "success", message: `Deleted profile for ${profile.user_id}.` });
       await loadProfiles();
+      await loadAudit();
     } catch (error) {
       setStatus({ kind: "error", message: error instanceof Error ? error.message : "Delete failed." });
     }
@@ -106,6 +124,7 @@ export function AdminConsole() {
           : "No profiles were past the retention window (or retention is disabled)."
       });
       await loadProfiles();
+      await loadAudit();
     } catch (error) {
       setStatus({ kind: "error", message: error instanceof Error ? error.message : "Purge failed." });
     }
@@ -229,6 +248,61 @@ export function AdminConsole() {
                         <Trash2 size={15} />
                       </button>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="admin-card">
+        <div className="admin-section-head">
+          <h2>
+            <ScrollText size={16} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+            Audit log
+          </h2>
+          <div className="admin-actions">
+            {auditVerify && (
+              <span className={`admin-integrity ${auditVerify.ok ? "ok" : "broken"}`}>
+                {auditVerify.ok ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+                {auditVerify.ok
+                  ? `Chain verified · ${auditVerify.entries} entries`
+                  : `Tampering detected at #${auditVerify.broken_at}`}
+              </span>
+            )}
+            <button className="admin-ghost" onClick={loadAudit}>
+              <RefreshCw size={14} /> Re-verify
+            </button>
+          </div>
+        </div>
+
+        {audit.length === 0 ? (
+          <p className="admin-muted">No audit events yet.</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Subject</th>
+                  <th>Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit.map((e) => (
+                  <tr key={e.seq}>
+                    <td>{e.seq}</td>
+                    <td>{new Date(e.event_time).toLocaleString()}</td>
+                    <td>{e.event_type}</td>
+                    <td>{e.action}</td>
+                    <td>{e.actor ?? "—"}</td>
+                    <td>{e.subject ?? "—"}</td>
+                    <td><code className="admin-hash">{e.entry_hash.slice(0, 10)}…</code></td>
                   </tr>
                 ))}
               </tbody>
