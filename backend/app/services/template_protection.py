@@ -37,6 +37,7 @@ import hashlib
 from functools import lru_cache
 
 from app.core.config import get_settings
+from app.services.key_provider import resolve_secret
 
 
 class TemplateProtector:
@@ -77,4 +78,4 @@ class TemplateProtector:
 
 @lru_cache
 def get_template_protector() -> TemplateProtector:
-    return TemplateProtector(get_settings().template_protection_key)
+    return TemplateProtector(resolve_secret(get_settings().template_protection_key))

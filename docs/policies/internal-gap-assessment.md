@@ -105,7 +105,7 @@ Material controls (representative; a full 93-control SoA is a Phase 3 follow-up)
 | ID | Gap | Standard(s) | Severity | Effort | Phase |
 | --- | --- | --- | --- | --- | --- |
 | G1 | Execute **in-region hosting** (residency) | GDPR, ISO A.5.23 | 🔴 Critical | M | 2 |
-| G2 | **KMS-managed keys** (not bare env var) + rotation | ISO 24745, A.8.24 | 🟠 High | M | 2 |
+| G2 | **KMS-ready secret sourcing** (`file:`/`command:`/`env:`) **+ rotation** done (`key_provider.py`); remaining: wire a managed KMS/HSM + automated rotation | ISO 24745, A.8.24 | 🟡 Reduced | S | 2 |
 | G3 | **PostgreSQL hardening** (private, TLS, encrypted, least-priv) | ISO A.8.24 | 🟠 High | M | 2 |
 | G4 | **Encrypted backups + restore/DR test** | ISO A.8.13, A.5.30 | 🟠 High | M | 2 |
 | G5 | ~~Cancelable/renewable templates~~ **DONE** (key-derived orthonormal transform; score-preserving, revocable, unlinkable) — remaining: one-way transform | ISO 24745 | 🟢 Closed | — | ✓ |
@@ -131,8 +131,9 @@ Effort: S ≈ ≤1 day · M ≈ days · L ≈ weeks · ⧉/$$ = external + budge
 ## 6. Prioritized closure plan
 
 **Now (blockers to any real data) — Phase 2 tail**
-G1 in-region hosting · G2 KMS keys · G3 PostgreSQL hardening · G4 backups/DR ·
-G11 session security · G13 SCA · G14 secrets mgmt.
+G1 in-region hosting · G3 PostgreSQL hardening · G4 backups/DR · G11 session
+security · G13 SCA. *(G2 secret sourcing + rotation and G14 secrets mgmt — the
+sourcing layer is done; remaining is wiring a managed KMS.)*
 
 **Next (before/at launch) — Phase 2–3**
 G8 end-to-end FRR · G9 consent UI + self-service erasure · G10 SIEM/monitoring ·

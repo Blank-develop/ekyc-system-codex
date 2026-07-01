@@ -98,7 +98,7 @@ account/region**, plus the hardening in §4.
 | --- | --- | --- |
 | **Region** | Shared US/EU | In-region VPC, single legal jurisdiction |
 | **Database** | Ephemeral SQLite in `/tmp` | Managed **PostgreSQL**, private subnet, TLS in transit, encrypted volume, PITR backups (encrypted) |
-| **Encryption keys** | `LALIGENCE_ENCRYPTION_KEY` env var | **KMS / Vault-managed** keys with rotation (not a bare env var) |
+| **Encryption keys** | `LALIGENCE_ENCRYPTION_KEY` literal env var | **Manager-sourced** via `file:`/`command:` specs (`key_provider.py`) + **rotation** (retired keys); wire to a managed KMS/HSM |
 | **Auth** | Open (demo) | `LALIGENCE_API_KEYS` + per-user **JWT** on; admin locked |
 | **Consent/retention** | Defaults (retain ∞) | `LALIGENCE_PROFILE_RETENTION_DAYS` set; scheduled purge job |
 | **CORS** | Allowlist demo origins | Allowlist the branded production domain only |

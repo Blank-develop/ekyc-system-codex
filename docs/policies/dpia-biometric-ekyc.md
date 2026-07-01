@@ -57,7 +57,7 @@ listed mitigations.
 
 | # | Risk to individuals | Inherent | Mitigations (control) | Residual |
 | --- | --- | --- | --- | --- |
-| R1 | **Biometric breach** (template theft → irreversible harm) | High | Encryption at rest (`crypto.py`); **cancelable/renewable templates** (`template_protection.py`) so a leaked template is revocable by re-keying and the raw biometric is never stored; embeddings never in API; no raw images; access control | **Low–Medium** ⤓ (needs KMS keys to reach Low) |
+| R1 | **Biometric breach** (template theft → irreversible harm) | High | Encryption at rest (`crypto.py`); **cancelable/renewable templates** (`template_protection.py`, revocable by re-keying, raw biometric never stored); **keys sourced from a manager, not the env, + rotation** (`key_provider.py`); embeddings never in API; no raw images; access control | **Low** ⤓ (fully managed KMS/HSM to finalize) |
 | R2 | **PII exposure** (name/DOB/passport number) | High | Encrypted PII blob + blind index; redacted face-login; TLS | Medium |
 | R3 | **Unauthorized access** to profiles | High | JWT + RBAC, fail-closed admin, API-key gate | Low |
 | R4 | **Presentation/injection attack** → wrong person verified | High | Passive+active PAD, MRZ hard-fail, burst voting, nonce/ordering | Medium ⤓ (needs ⧉ independent PAD eval) |
@@ -72,7 +72,9 @@ listed mitigations.
 
 ## 5. Measures to reduce risk (planned to close residuals)
 
-- **Cancelable/renewable templates** (ISO 24745) — **done** (`template_protection.py`); add **KMS-managed keys** to lower R1 to Low.
+- **Cancelable/renewable templates** (ISO 24745) — **done** (`template_protection.py`).
+  **KMS-ready key sourcing + rotation** — **done** (`key_provider.py`); wiring a fully
+  managed KMS/HSM finalizes R1 at Low.
 - **Independent PAD evaluation** (ISO 30107-3) and IAL2 assessment → lowers R4.
 - **Execute in-region hosting** (`docs/in-region-hosting-plan.md`) → lowers R8.
 - **End-to-end FRR** on genuine document↔selfie pairs → quantifies/lowers R9.
