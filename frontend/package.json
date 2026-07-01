@@ -12,13 +12,13 @@
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/hands": "^0.4.1675469240",
     "lucide-react": "^0.561.0",
-    "react": "^19.2.3",
+    "react": "^19.2.7",
     "react-dom": "^19.2.3",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "^8.1.2"
