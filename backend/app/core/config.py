@@ -59,6 +59,13 @@ class Settings(BaseModel):
         ("http://localhost:5173", "http://127.0.0.1:5173"),
     )
     frontend_dist: str = _str_env("LALIGENCE_FRONTEND_DIST", "")
+    # Session security: verification sessions are short-lived and client-bound.
+    # Idle timeout (since last activity) and an absolute cap (since creation); a
+    # per-session token issued at creation must be presented (X-Session-Token) on
+    # every session-scoped request to prevent session-id-only hijack/replay.
+    session_idle_ttl_minutes: int = _int_env("LALIGENCE_SESSION_IDLE_TTL_MINUTES", 30)
+    session_absolute_ttl_minutes: int = _int_env("LALIGENCE_SESSION_ABSOLUTE_TTL_MINUTES", 120)
+    session_binding_enforced: bool = _bool_env("LALIGENCE_SESSION_BINDING_ENFORCED", True)
     # Admin profile endpoints (list/delete) are disabled unless this token is set.
     # When set, callers must send it in the X-Admin-Token header. Fail-closed.
     admin_api_token: str = _str_env("LALIGENCE_ADMIN_API_TOKEN", "")

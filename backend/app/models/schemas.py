@@ -87,6 +87,9 @@ class VerificationResult(BaseModel):
     biometric: BiometricAnalysis = Field(default_factory=BiometricAnalysis)
     active_challenges: list[Challenge] = Field(default_factory=list)
     hand_challenges: list[Challenge] = Field(default_factory=list)
+    # Client-binding token, returned only when the session is created. Must be sent
+    # back in the X-Session-Token header on subsequent session-scoped requests.
+    session_token: str | None = None
 
 
 class CreateVerificationRequest(BaseModel):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from app.core.config import get_settings
@@ -71,8 +71,45 @@ class VerificationStore:
         self._sessions: dict[UUID, VerificationResult] = {}
         self._document_face_embeddings: dict[UUID, list[float]] = {}
         self._selfie_face_embeddings: dict[UUID, list[float]] = {}
+        # Per-session client-binding tokens (never persisted on the result object).
+        self._tokens: dict[UUID, str] = {}
+
+    # --- Session lifecycle / security ----------------------------------------
+
+    def session_token(self, session_id: UUID) -> str | None:
+        return self._tokens.get(session_id)
+
+    def validate_token(self, session_id: UUID, token: str | None) -> bool:
+        expected = self._tokens.get(session_id)
+        if not expected or not token:
+            return False
+        return secrets.compare_digest(token, expected)
+
+    def is_expired(self, session_id: UUID, now: datetime | None = None) -> bool:
+        session = self._sessions.get(session_id)
+        if session is None:
+            return True
+        now = now or datetime.now(timezone.utc)
+        settings = get_settings()
+        idle = timedelta(minutes=settings.session_idle_ttl_minutes)
+        absolute = timedelta(minutes=settings.session_absolute_ttl_minutes)
+        return (now - session.updated_at) > idle or (now - session.created_at) > absolute
+
+    def drop(self, session_id: UUID) -> None:
+        self._sessions.pop(session_id, None)
+        self._tokens.pop(session_id, None)
+        self._document_face_embeddings.pop(session_id, None)
+        self._selfie_face_embeddings.pop(session_id, None)
+
+    def prune_expired(self, now: datetime | None = None) -> int:
+        now = now or datetime.now(timezone.utc)
+        expired = [sid for sid in list(self._sessions) if self.is_expired(sid, now)]
+        for sid in expired:
+            self.drop(sid)
+        return len(expired)
 
     def create(self, user_id: str) -> VerificationResult:
+        self.prune_expired()  # bound memory: sweep stale sessions on each creation
         now = datetime.now(timezone.utc)
         active = [
             Challenge(id=key, type=ChallengeType.active_liveness, prompt=prompt, instruction=instruction)
@@ -97,6 +134,7 @@ class VerificationStore:
             hand_challenges=hands,
         )
         self._sessions[result.session_id] = result
+        self._tokens[result.session_id] = secrets.token_urlsafe(32)
         return result
 
     def get(self, session_id: UUID) -> VerificationResult:

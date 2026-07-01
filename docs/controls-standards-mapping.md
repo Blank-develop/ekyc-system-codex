@@ -45,6 +45,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | Limit information returned to unauthenticated callers | Face-login PII redaction (masked doc number, no DOB/expiry) | ✓ | `test_face_login_redaction.py`, `LALIGENCE_FACE_LOGIN_EXPOSE_PII` |
 | FMR ≤ threshold for authenticator use | Match threshold configurable; measured on LFW | ◐ | `LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD`, `docs/face-matching-results.md` |
 | Don't transmit/store raw biometric | Embeddings only; never exposed in API schemas | ✓ | `models/schemas.py` (no embedding fields) |
+| Session binding / freshness | Unguessable + short-lived (idle/absolute TTL) + **client-bound** session token (`X-Session-Token`) | ✓ | `services/session_store.py`, `tests/test_session_security.py` |
 
 ## 3. ISO/IEC 30107-3 — Presentation Attack Detection (PAD)
 

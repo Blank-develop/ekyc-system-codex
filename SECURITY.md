@@ -95,8 +95,14 @@ Prioritized. Tier 1 items are blockers.
   written** (`docs/in-region-hosting-plan.md`): options, target architecture,
   migration steps, and a go-live checklist. Still needed: **execute** the move
   (provision in-region, managed PostgreSQL, KMS keys) — a hosting/ops task.
-- [ ] **Session security** — unguessable, short-lived, client-bound session
-  tokens with expiry to prevent hijack/replay.
+- [~] **Session security.** Verification sessions are **unguessable** (random id
+  + a 256-bit per-session token), **short-lived** (idle + absolute TTL, expired
+  sessions return 410 and are evicted), and **client-bound** — the token
+  (`X-Session-Token`, issued once at creation) is required on every session-scoped
+  request, so a leaked session id alone can't be replayed/hijacked
+  (`LALIGENCE_SESSION_*`, fail-closed via `LALIGENCE_SESSION_BINDING_ENFORCED`).
+  Expired sessions are also swept on creation to bound memory. Still needed:
+  distributed session storage for multi-instance.
 
 ### Tier 2 — fraud / integrity
 - [x] Admin endpoints locked (fail-closed token guard).
@@ -183,6 +189,9 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |
 | `LALIGENCE_FACE_LOGIN_GLOBAL_MAX_PER_MINUTE` | Global face-login attempt cap / harvesting backstop (default 60). |
 | `LALIGENCE_CORS_ORIGINS` | Explicit CORS allowlist (no wildcard). |
+| `LALIGENCE_SESSION_IDLE_TTL_MINUTES` | Verification-session idle timeout (default 30). |
+| `LALIGENCE_SESSION_ABSOLUTE_TTL_MINUTES` | Verification-session absolute lifetime cap (default 120). |
+| `LALIGENCE_SESSION_BINDING_ENFORCED` | Require the per-session `X-Session-Token` on session-scoped requests. `true` (default). |
 | `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` | Upload size cap. |
 | `LALIGENCE_MAX_REQUESTS_PER_MINUTE` | Global per-IP rate limit (all endpoints). |
 | `DATABASE_URL` | Profile store; use PostgreSQL with TLS + encryption at rest in production. |
