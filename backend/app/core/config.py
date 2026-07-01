@@ -72,12 +72,22 @@ class Settings(BaseModel):
     # Users: LALIGENCE_AUTH_USERS = "user:pbkdf2_hash:role,..." (generate a hash with
     # scripts/hash_password.py). Unset = JWT auth disabled (public demo).
     jwt_secret: str = _str_env("LALIGENCE_JWT_SECRET", "")
+    # Retired JWT secrets (comma-separated specs) still VERIFY previously issued
+    # tokens during a rotation; the primary secret signs new tokens.
+    jwt_secrets_retired: tuple[str, ...] = _csv_env("LALIGENCE_JWT_SECRETS_RETIRED", ())
     jwt_expire_minutes: int = _int_env("LALIGENCE_JWT_EXPIRE_MINUTES", 60)
     auth_users: tuple[str, ...] = _csv_env("LALIGENCE_AUTH_USERS", ())
     # Fernet key for encrypting biometric templates at rest. Unset = plaintext
     # (dev/demo). Set in production. Generate:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Secret values may be a bare literal (dev/demo) or a provider spec resolved at
+    # runtime — file:/run/secrets/x, command:<vault/kms cli>, env:OTHER_VAR — so
+    # production keys can come from a KMS/secret-manager, not a bare env var. See
+    # services/key_provider.py.
     encryption_key: str = _str_env("LALIGENCE_ENCRYPTION_KEY", "")
+    # Retired encryption keys (comma-separated specs) still DECRYPT existing data
+    # during a key rotation; the primary key above is used to encrypt new data.
+    encryption_keys_retired: tuple[str, ...] = _csv_env("LALIGENCE_ENCRYPTION_KEYS_RETIRED", ())
     # Cancelable/renewable biometric templates (ISO/IEC 24745). When set, stored
     # face templates are transformed by a key-derived orthonormal projection
     # (accuracy-preserving: matching scores are unchanged) so the raw biometric is

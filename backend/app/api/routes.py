@@ -25,6 +25,7 @@ from app.models.schemas import (
 )
 from app.services import auth as auth_service
 from app.services.audit import audit_log
+from app.services.key_provider import resolve_secret
 from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
@@ -461,6 +462,19 @@ def _auth_users() -> dict[str, auth_service.AuthUser]:
     return auth_service.load_users(settings.auth_users)
 
 
+def _jwt_signing_secret() -> str:
+    """Resolve the primary JWT secret (used to sign new tokens)."""
+    return resolve_secret(settings.jwt_secret)
+
+
+def _jwt_verify_secrets() -> list[str]:
+    """Primary + retired JWT secrets, so tokens signed under a retired secret still
+    verify during a rotation."""
+    secrets_ = [resolve_secret(settings.jwt_secret)]
+    secrets_ += [resolve_secret(spec) for spec in settings.jwt_secrets_retired]
+    return [s for s in secrets_ if s]
+
+
 @router.post("/auth/token", response_model=TokenResponse)
 async def issue_token(request: Request, form: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
     """OAuth2 password grant: exchange username + password for a signed JWT."""
@@ -484,7 +498,7 @@ async def issue_token(request: Request, form: OAuth2PasswordRequestForm = Depend
         subject=_client_ip(request), detail={"role": user.role, "success": True},
     )
     token = auth_service.create_access_token(
-        settings.jwt_secret, user.username, user.role, settings.jwt_expire_minutes
+        _jwt_signing_secret(), user.username, user.role, settings.jwt_expire_minutes
     )
     return TokenResponse(
         access_token=token,
@@ -497,7 +511,7 @@ def get_current_user(token: str | None = Depends(oauth2_scheme)) -> auth_service
     """Resolve the caller from a Bearer JWT. 401 when missing/invalid/expired."""
     if not settings.jwt_secret:
         raise HTTPException(status_code=503, detail="Authentication is not configured.")
-    payload = auth_service.decode_token(settings.jwt_secret, token) if token else None
+    payload = auth_service.decode_token(_jwt_verify_secrets(), token) if token else None
     if not payload:
         raise HTTPException(
             status_code=401,
@@ -515,7 +529,7 @@ async def read_current_user(user: auth_service.AuthUser = Depends(get_current_us
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     """Gate all /api endpoints behind an API key when one or more are configured.
     Open (no-op) when LALIGENCE_API_KEYS is unset, so the public demo still works."""
-    keys = settings.api_keys
+    keys = tuple(resolve_secret(spec) for spec in settings.api_keys if spec)
     if not keys:
         return
     if not x_api_key or not any(secrets.compare_digest(x_api_key, key) for key in keys):
@@ -529,11 +543,11 @@ def require_admin(
     """Guard the profile admin endpoints. Fail-closed: disabled unless a static
     admin token (X-Admin-Token) or JWT auth (a Bearer token with role "admin") is
     configured. Either credential grants access."""
-    expected = settings.admin_api_token
+    expected = resolve_secret(settings.admin_api_token)
     jwt_enabled = bool(settings.jwt_secret)
     # JWT path: a valid Bearer token carrying the admin role.
     if jwt_enabled and token:
-        payload = auth_service.decode_token(settings.jwt_secret, token)
+        payload = auth_service.decode_token(_jwt_verify_secrets(), token)
         if payload and payload.get("role") == "admin":
             return
     if not expected:

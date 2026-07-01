@@ -70,8 +70,18 @@ Prioritized. Tier 1 items are blockers.
   key-derived **orthonormal projection** before encryption — matching scores are
   preserved **exactly** (rotation preserves the dot product), the raw biometric is
   never stored even after decrypt, and templates are **revocable/renewable** by
-  re-keying (and unlinkable across keys). Still needed: **KMS-managed keys** (not a
-  bare env var) and a fully one-way (irreversible) transform.
+  re-keying (and unlinkable across keys). Still needed: a fully one-way
+  (irreversible) transform.
+- [~] **KMS-ready secret sourcing & key rotation.** Every secret
+  (`LALIGENCE_ENCRYPTION_KEY`, `LALIGENCE_JWT_SECRET`, `LALIGENCE_TEMPLATE_PROTECTION_KEY`,
+  admin token, API keys) may be a bare literal (dev/demo) **or a provider spec**
+  resolved at runtime — `file:/run/secrets/x` (K8s/Docker/KMS-CSI mount),
+  `command:<vault/aws-kms/gcloud cli>`, or `env:OTHER_VAR` — so production keys
+  come from a **secret manager, not a bare env var** (`services/key_provider.py`).
+  **Rotation** is supported: retired encryption keys still decrypt existing data
+  (MultiFernet via `LALIGENCE_ENCRYPTION_KEYS_RETIRED`) and retired JWT secrets
+  still verify live tokens (`LALIGENCE_JWT_SECRETS_RETIRED`). Still needed: a fully
+  managed KMS/HSM with automated rotation + envelope encryption.
 - [~] **Consent, retention & deletion.** Each enrolled profile records the
   **consent terms version + timestamp** (`LALIGENCE_CONSENT_VERSION`).
   **Retention** auto-purge is available (`LALIGENCE_PROFILE_RETENTION_DAYS` +
@@ -110,7 +120,10 @@ Prioritized. Tier 1 items are blockers.
   **distributed** rate limiting (Redis) for multi-instance, per-account limits,
   escalating lockout, and a WAF.
 - [ ] **Concurrency limits / queueing** for expensive ML inference (DoS).
-- [ ] **Secrets management** (no secrets in git/env-in-repo); key rotation.
+- [~] **Secrets management** — secrets can be sourced from a manager via
+  `file:`/`command:`/`env:` specs (`services/key_provider.py`), and encryption/JWT
+  keys support **rotation** (retired keys still decrypt/verify). Still needed: a
+  managed KMS/HSM with automated rotation.
 - [ ] **Dependency scanning** (SCA / Dependabot) across the ML stack; resolve
   known advisories.
 - [ ] Strict **Content-Security-Policy**; verify TLS configuration.
@@ -159,6 +172,9 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | `LALIGENCE_JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes (default 60). |
 | `LALIGENCE_ENCRYPTION_KEY` | Fernet key — when set, biometric templates are encrypted at rest. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Unset = plaintext (dev/demo). |
 | `LALIGENCE_TEMPLATE_PROTECTION_KEY` | Enables cancelable/renewable templates (ISO/IEC 24745): a key-derived orthonormal transform of the template (accuracy-preserving). Re-key to revoke/renew (requires re-enrollment). Unset = raw template. |
+| *(secret sourcing)* | Any secret above may be a bare literal **or** a provider spec: `file:/path`, `command:<cli>`, `env:VAR`, or `literal:VALUE` — resolved by `services/key_provider.py` so production keys come from a KMS/secret-manager, not the env. |
+| `LALIGENCE_ENCRYPTION_KEYS_RETIRED` | Comma-separated retired encryption-key specs that still **decrypt** existing data during rotation (new data uses the primary key). |
+| `LALIGENCE_JWT_SECRETS_RETIRED` | Comma-separated retired JWT-secret specs that still **verify** live tokens during rotation (new tokens use the primary secret). |
 | `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
 | `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
 | `LALIGENCE_AUDIT_LOG_ENABLED` | Tamper-evident hash-chained audit log of auth/PII-access/admin/enrollment events. `true` (default). Keyed with `LALIGENCE_ENCRYPTION_KEY` when set. |

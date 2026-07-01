@@ -21,20 +21,27 @@ import json
 from functools import lru_cache
 
 from app.core.config import get_settings
+from app.services.key_provider import resolve_secret
 
 PREFIX = "enc:v1:"
 
 
 class TemplateCipher:
-    def __init__(self, key: str) -> None:
+    def __init__(self, keys: str | list[str]) -> None:
+        # Accept a single key (legacy) or a rotation set [primary, *retired].
+        if isinstance(keys, str):
+            keys = [keys] if keys else []
+        keys = [k for k in keys if k]
         self._fernet = None
         self._index_key = b""
-        if key:
-            from cryptography.fernet import Fernet
+        if keys:
+            from cryptography.fernet import Fernet, MultiFernet
 
-            self._fernet = Fernet(key.encode() if isinstance(key, str) else key)
-            # Separate derived key for blind indexes (don't reuse the cipher key directly).
-            self._index_key = hashlib.sha256(key.encode() + b"|blind-index").digest()
+            # MultiFernet encrypts with the first key and decrypts with any of them,
+            # so retired keys keep decrypting existing data during a rotation.
+            self._fernet = MultiFernet([Fernet(k.encode()) for k in keys])
+            # Blind index derives from the primary key (don't reuse the cipher key raw).
+            self._index_key = hashlib.sha256(keys[0].encode() + b"|blind-index").digest()
 
     @property
     def enabled(self) -> bool:
@@ -85,4 +92,7 @@ class TemplateCipher:
 
 @lru_cache
 def get_template_cipher() -> TemplateCipher:
-    return TemplateCipher(get_settings().encryption_key)
+    settings = get_settings()
+    keys = [resolve_secret(settings.encryption_key)]
+    keys += [resolve_secret(spec) for spec in settings.encryption_keys_retired]
+    return TemplateCipher(keys)

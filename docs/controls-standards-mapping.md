@@ -65,7 +65,7 @@ of an audit: "for requirement X, show me the control and the proof."
 | Queries without exposing the value | **Blind index** (keyed HMAC) for passport uniqueness | ✓ | `crypto.py` (`blind_index`), `test_crypto.py` |
 | **Irreversibility** (can't reconstruct biometric) | Embeddings not images; key-derived transform + encryption so raw biometric never stored | ◐ | `services/template_protection.py`, `crypto.py` |
 | **Unlinkability / renewability** (cancelable templates) | **Key-derived orthonormal transform** — revocable/renewable by re-keying, unlinkable across keys, score-preserving | ✓ | `services/template_protection.py`, `tests/test_template_protection.py`, `LALIGENCE_TEMPLATE_PROTECTION_KEY` |
-| **Key management** (protect the key) | Env-var keys today; KMS/Vault planned | ◐ | `docs/in-region-hosting-plan.md` §4 |
+| **Key management** (protect the key) | **KMS-ready sourcing** (`file:`/`command:`/`env:` specs) + **rotation** (retired keys decrypt/verify); managed KMS/HSM still to wire | ◐ | `services/key_provider.py`, `tests/test_key_provider.py` |
 
 ## 5. ISO/IEC 27001 — ISMS (Annex A themes)
 

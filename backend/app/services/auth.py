@@ -95,11 +95,22 @@ def create_access_token(secret: str, subject: str, role: str, expires_minutes: i
     return f"{signing_input}.{_b64u(signature)}"
 
 
-def decode_token(secret: str, token: str) -> dict | None:
-    """Verify signature + expiry. Returns the claims, or None if invalid."""
+def decode_token(secret: str | list[str] | tuple[str, ...], token: str) -> dict | None:
+    """Verify signature + expiry against one secret or a rotation set (primary +
+    retired). Returns the claims, or None if none verify / expired."""
+    secrets = [secret] if isinstance(secret, str) else list(secret)
+    for candidate in secrets:
+        if not candidate:
+            continue
+        payload = _decode_one(candidate, token)
+        if payload is not None:
+            return payload
+    return None
+
+
+def _decode_one(secret: str, token: str) -> dict | None:
     try:
         signing_input, signature = token.rsplit(".", 1)
-        header, _ = signing_input.split(".")
         expected = hmac.new(secret.encode(), signing_input.encode(), hashlib.sha256).digest()
         if not hmac.compare_digest(expected, _b64u_decode(signature)):
             return None

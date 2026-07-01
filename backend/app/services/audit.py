@@ -59,7 +59,9 @@ class AuditLog:
         AuditBase.metadata.create_all(self._engine)
         self._Session = sessionmaker(bind=self._engine, expire_on_commit=False, future=True)
         self._lock = threading.Lock()
-        key = get_settings().encryption_key
+        from app.services.key_provider import resolve_secret
+
+        key = resolve_secret(get_settings().encryption_key)
         # Derive a dedicated audit key so it isn't the raw cipher key.
         self._hmac_key = hashlib.sha256(key.encode() + b"|audit-chain").digest() if key else None
 
