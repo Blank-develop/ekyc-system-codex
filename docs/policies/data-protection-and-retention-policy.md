@@ -86,8 +86,8 @@ Full posture: `SECURITY.md`. Standards mapping: `docs/controls-standards-mapping
 
 | Right | How it is served |
 | --- | --- |
-| **Access / portability** | Operator can retrieve a profile via the console; self-service export is planned |
-| **Erasure** ("right to be forgotten") | Admin `DELETE /api/profiles/{user_id}`; deletion is recorded in the audit log |
+| **Access / portability** | **Self-service**: the subject authenticates with a live selfie (`/api/self-service/export`) and downloads their data as JSON; operators can also retrieve via the console |
+| **Erasure** ("right to be forgotten") | **Self-service** (`/api/self-service/delete`, live-selfie authenticated) or admin `DELETE /api/profiles/{user_id}`; every deletion is recorded in the audit log |
 | **Rectification** | Re-verification / re-enrollment updates the profile |
 | **Withdraw consent** | Triggers erasure of the associated profile |
 | **Object / restrict** | Handled by the DPO case-by-case |

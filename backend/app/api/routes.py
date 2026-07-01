@@ -12,14 +12,18 @@ from app.models.schemas import (
     AuditVerifyResponse,
     AuthUserInfo,
     CompleteChallengeRequest,
+    ConsentInfo,
     CreateVerificationRequest,
     DeleteProfileResponse,
     Decision,
     FaceEnrollmentResponse,
     FaceLoginResponse,
     FraudSignal,
+    SelfServiceDeleteResponse,
+    SelfServiceExportResponse,
     SelfieAnalysisRequest,
     TokenResponse,
+    UserProfile,
     UserProfileListResponse,
     VerificationResult,
 )
@@ -702,3 +706,87 @@ async def face_login(request: Request, file: UploadFile = File(...)) -> FaceLogi
         },
         signals=signals,
     )
+
+
+# --- Consent + self-service data rights (GDPR) --------------------------------
+
+CONSENT_NOTICE = (
+    "To verify your identity, Kyron captures your document and a live selfie and "
+    "creates a protected face template. Images are analyzed in memory and not "
+    "stored; only an encrypted template and minimal document details are kept, and "
+    "only if you complete enrollment. You can export or delete your data at any "
+    "time from “Manage my data”. By continuing you consent to this biometric "
+    "processing."
+)
+
+
+@router.get("/consent", response_model=ConsentInfo)
+async def get_consent() -> ConsentInfo:
+    """The current consent terms version + notice, so the UI shows (and records
+    against) the right version."""
+    return ConsentInfo(version=settings.consent_version, notice=CONSENT_NOTICE)
+
+
+async def _authenticate_face_owner(content: bytes) -> tuple[UserProfile | None, list[str], float]:
+    """Prove data-subject ownership by face: extract + passive liveness + match.
+    Returns the matched (unredacted) profile — the owner's own data — or None."""
+    face_result = await run_in_threadpool(face_recognizer.extract, content, "login")
+    reason_codes: list[str] = []
+    if face_result.embedding is None:
+        reason_codes.append("FACE_NOT_FOUND")
+    if face_result.face_confidence and face_result.face_confidence < 0.82:
+        reason_codes.append("FACE_CONFIDENCE_LOW")
+    if int(face_result.checks.get("login_face_count") or 0) > 1:
+        reason_codes.append("MULTIPLE_FACES")
+    if not reason_codes:
+        passive = await run_in_threadpool(
+            selfie_analyzer.passive_spoof.analyze, content, face_result.face_box
+        )
+        if not passive.passed or passive.risk > settings.max_passive_liveness_risk:
+            reason_codes.append("LIVENESS_FAILED")
+    for signal in face_result.signals:
+        if signal.severity == "high" and signal.code not in reason_codes:
+            reason_codes.append(signal.code)
+    if reason_codes or face_result.embedding is None:
+        return None, reason_codes, 0.0
+    match = await run_in_threadpool(
+        profile_store.match, face_result.embedding, face_recognizer.compare,
+        settings.face_login_match_threshold,
+    )
+    if match.profile is None:
+        reason_codes.append("NO_MATCH")
+        return None, reason_codes, match.score
+    return match.profile, reason_codes, match.score
+
+
+@router.post("/self-service/export", response_model=SelfServiceExportResponse,
+             dependencies=[Depends(face_login_rate_limit)])
+async def self_service_export(request: Request, file: UploadFile = File(...)) -> SelfServiceExportResponse:
+    """Data-subject access/portability: a live selfie authenticates the owner, who
+    then receives their own stored profile for download."""
+    content = await _read_upload(file)
+    profile, reason_codes, score = await _authenticate_face_owner(content)
+    audit_log.record(
+        "dsar", "self_service_export", actor=_client_ip(request),
+        subject=profile.user_id if profile else None, detail={"verified": profile is not None},
+    )
+    if profile is None:
+        return SelfServiceExportResponse(verified=False, reason_codes=reason_codes, match_score=round(score, 2))
+    return SelfServiceExportResponse(verified=True, match_score=round(score, 2), profile=profile)
+
+
+@router.post("/self-service/delete", response_model=SelfServiceDeleteResponse,
+             dependencies=[Depends(face_login_rate_limit)])
+async def self_service_delete(request: Request, file: UploadFile = File(...)) -> SelfServiceDeleteResponse:
+    """Right to erasure: a live selfie authenticates the owner, who can then delete
+    their own enrolled profile. The deletion is recorded in the audit log."""
+    content = await _read_upload(file)
+    profile, reason_codes, _score = await _authenticate_face_owner(content)
+    if profile is None:
+        audit_log.record("erasure", "self_service_delete_denied",
+                         actor=_client_ip(request), detail={"verified": False})
+        return SelfServiceDeleteResponse(verified=False, deleted=False, reason_codes=reason_codes)
+    deleted = await run_in_threadpool(profile_store.delete_user, profile.user_id)
+    audit_log.record("erasure", "self_service_delete", actor=_client_ip(request),
+                     subject=profile.user_id, detail={"deleted": deleted})
+    return SelfServiceDeleteResponse(verified=True, deleted=deleted > 0, user_id=profile.user_id)

@@ -46,6 +46,25 @@ export interface AuditVerifyResponse {
   broken_at: number | null;
 }
 
+export interface ConsentInfo {
+  version: string;
+  notice: string;
+}
+
+export interface SelfServiceExportResponse {
+  verified: boolean;
+  match_score: number;
+  reason_codes: string[];
+  profile: UserProfile | null;
+}
+
+export interface SelfServiceDeleteResponse {
+  verified: boolean;
+  deleted: boolean;
+  user_id: string | null;
+  reason_codes: string[];
+}
+
 export interface Challenge {
   id: string;
   type: ChallengeType;
@@ -336,5 +355,31 @@ export const api = {
     request<AuditListResponse>(`/api/audit?limit=${limit}`, { retries: 1 }),
 
   verifyAudit: () =>
-    request<AuditVerifyResponse>("/api/audit/verify", { retries: 1 })
+    request<AuditVerifyResponse>("/api/audit/verify", { retries: 1 }),
+
+  // --- Consent + self-service data rights (GDPR) -----------------------------
+
+  getConsent: () => request<ConsentInfo>("/api/consent", { retries: 1 }),
+
+  exportMyData: (file: File | Blob) => {
+    const body = new FormData();
+    body.append("file", file, file instanceof File ? file.name : "self-service.jpg");
+    return request<SelfServiceExportResponse>("/api/self-service/export", {
+      method: "POST",
+      body,
+      retries: 1,
+      timeoutMs: 90000
+    });
+  },
+
+  deleteMyData: (file: File | Blob) => {
+    const body = new FormData();
+    body.append("file", file, file instanceof File ? file.name : "self-service.jpg");
+    return request<SelfServiceDeleteResponse>("/api/self-service/delete", {
+      method: "POST",
+      body,
+      retries: 1,
+      timeoutMs: 90000
+    });
+  }
 };

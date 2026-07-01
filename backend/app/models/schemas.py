@@ -177,6 +177,25 @@ class AuditVerifyResponse(BaseModel):
     broken_at: int | None = None
 
 
+class ConsentInfo(BaseModel):
+    version: str
+    notice: str
+
+
+class SelfServiceExportResponse(BaseModel):
+    verified: bool
+    match_score: float = 0.0
+    reason_codes: list[str] = Field(default_factory=list)
+    profile: UserProfile | None = None
+
+
+class SelfServiceDeleteResponse(BaseModel):
+    verified: bool
+    deleted: bool = False
+    user_id: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class FaceLoginResponse(BaseModel):
     decision: Decision
     matched: bool

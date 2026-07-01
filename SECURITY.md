@@ -82,14 +82,16 @@ Prioritized. Tier 1 items are blockers.
   (MultiFernet via `LALIGENCE_ENCRYPTION_KEYS_RETIRED`) and retired JWT secrets
   still verify live tokens (`LALIGENCE_JWT_SECRETS_RETIRED`). Still needed: a fully
   managed KMS/HSM with automated rotation + envelope encryption.
-- [~] **Consent, retention & deletion.** Each enrolled profile records the
-  **consent terms version + timestamp** (`LALIGENCE_CONSENT_VERSION`).
-  **Retention** auto-purge is available (`LALIGENCE_PROFILE_RETENTION_DAYS` +
-  admin `POST /api/profiles/purge-expired`) — deletes profiles whose last activity
-  is older than the window; 0 = retain indefinitely (demo default). **Erasure** is
-  served by admin `DELETE /api/profiles/{user_id}`. Still needed: a user-facing
-  consent **UI** with granular opt-in, a self-service data-subject deletion/export
-  request flow, and a scheduled purge job.
+- [~] **Consent, retention & deletion.** A **consumer consent gate** (opt-in
+  checkbox with a versioned notice from `GET /api/consent`) blocks the biometric
+  flow until accepted, and each enrolled profile records the **consent terms
+  version + timestamp** (`LALIGENCE_CONSENT_VERSION`). **Retention** auto-purge is
+  available (`LALIGENCE_PROFILE_RETENTION_DAYS` + admin `POST /api/profiles/purge-expired`);
+  0 = retain indefinitely (demo default). **Self-service data rights**: a data
+  subject authenticates with a **live selfie** (`POST /api/self-service/export` /
+  `/delete`, liveness + face match, rate-limited, audited) to **export** or
+  **erase** their own record; admins can also erase via `DELETE /api/profiles/{user_id}`.
+  Still needed: a scheduled purge job and identity-proofed DSAR for non-enrolled requests.
 - [~] **Data residency** — host real Lao/SEA identity data in-region per local
   law; do **not** use a public third-party demo platform for real PII. **Plan
   written** (`docs/in-region-hosting-plan.md`): options, target architecture,
