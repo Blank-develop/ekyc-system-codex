@@ -66,6 +66,18 @@ class Settings(BaseModel):
     session_idle_ttl_minutes: int = _int_env("LALIGENCE_SESSION_IDLE_TTL_MINUTES", 30)
     session_absolute_ttl_minutes: int = _int_env("LALIGENCE_SESSION_ABSOLUTE_TTL_MINUTES", 120)
     session_binding_enforced: bool = _bool_env("LALIGENCE_SESSION_BINDING_ENFORCED", True)
+    # NIST IAL2 steps 5-6: confirm a validated address/phone via an enrollment code,
+    # and notify the applicant that a proofing occurred. Off by default (the public
+    # demo skips it); enable in an IAL2-aligned deployment.
+    require_contact_confirmation: bool = _bool_env("LALIGENCE_REQUIRE_CONTACT_CONFIRMATION", False)
+    contact_code_ttl_minutes: int = _int_env("LALIGENCE_CONTACT_CODE_TTL_MINUTES", 10)
+    contact_code_max_attempts: int = _int_env("LALIGENCE_CONTACT_CODE_MAX_ATTEMPTS", 5)
+    # Delivery channel for codes/notifications: "console" (log only) or
+    # "command:<shell>" to shell out to a mailer/SMS CLI. See services/notifier.py.
+    notifier: str = _str_env("LALIGENCE_NOTIFIER", "console")
+    # Demo-only: echo the enrollment code in the request response so the flow can be
+    # exercised without a real email/SMS provider. Never enable in production.
+    notifier_echo_code: bool = _bool_env("LALIGENCE_NOTIFIER_ECHO_CODE", False)
     # Admin profile endpoints (list/delete) are disabled unless this token is set.
     # When set, callers must send it in the X-Admin-Token header. Fail-closed.
     admin_api_token: str = _str_env("LALIGENCE_ADMIN_API_TOKEN", "")

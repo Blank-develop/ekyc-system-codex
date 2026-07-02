@@ -31,6 +31,8 @@ of an audit: "for requirement X, show me the control and the proof."
 | **Verify** the applicant is the owner (biometric bind) | Face match (SFace) selfie ↔ document portrait | ◐ | `services/face_biometrics.py`; `docs/face-matching-results.md` (LFW: ~1% EER) |
 | **Presentation-attack detection** during proofing | Passive PAD (MiniFASNet) + active liveness (gesture, FaceMesh) | ◐⧉ | `services/selfie.py`, `services/session_store.py`; `tests/test_active_liveness.py` |
 | Bind proofing to a **verified live** subject, not a photo | Burst-mode PAD voting + active-liveness ordering + nonce | ✓ | `test_gesture_challenge.py`, `test_decision_passive_liveness.py` |
+| **Address/contact confirmation** (enrollment code) | One-time code to email/phone, expiring + attempt-limited; required for a pass when enabled | ◐ | `services/notifier.py`, `api/routes.py` (`/contact/request|confirm`), `test_contact_confirmation.py`, `LALIGENCE_REQUIRE_CONTACT_CONFIRMATION` |
+| **Notification of proofing** | Applicant notified at the confirmed contact on enrollment | ◐ | `api/routes.py` (enroll), `services/notifier.py` |
 | **Record-keeping** of the proofing decision + reasons | Verification result with `reason_codes`; profile store | ✓ | `services/profile_store.py`, `models/schemas.py` |
 | Protect collected PII / biometrics | Encryption at rest; no raw media to disk | ✓ | §4, §6 |
 | **FMR/FNMR & PAD performance evidence** for IAL2 claim | Face-match measured (LFW); PAD not independently tested | ◐⧉ | `docs/face-matching-results.md`; `docs/dataset-collection-plan.md` |
@@ -119,7 +121,7 @@ of an audit: "for requirement X, show me the control and the proof."
 
 | Standard | Coverage | Blocking gap to assessment |
 | --- | --- | --- |
-| NIST 800-63A (IAL2) | ◐ strong | Independent assessment; end-to-end FRR on genuine pairs |
+| NIST 800-63A (IAL2) | ◐ strong | Independent assessment; end-to-end FRR on genuine pairs; authoritative-source validation (contact confirmation + notification **now implemented**, gated) |
 | NIST 800-63B (authenticator) | ◐ | PAD performance evidence |
 | ISO/IEC 30107-3 (PAD) | ◐ | ⧉ Accredited-lab APCER/BPCER |
 | ISO/IEC 24745 (template protection) | ◐ strong | Cancelable/renewable templates **done**; remaining: KMS keys, one-way transform |
