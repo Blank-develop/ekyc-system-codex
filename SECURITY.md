@@ -199,6 +199,9 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | `LALIGENCE_SESSION_IDLE_TTL_MINUTES` | Verification-session idle timeout (default 30). |
 | `LALIGENCE_SESSION_ABSOLUTE_TTL_MINUTES` | Verification-session absolute lifetime cap (default 120). |
 | `LALIGENCE_SESSION_BINDING_ENFORCED` | Require the per-session `X-Session-Token` on session-scoped requests. `true` (default). |
+| `LALIGENCE_REQUIRE_CONTACT_CONFIRMATION` | IAL2 steps 5–6: require an enrollment-code contact confirmation to pass, and notify on proofing. `false` (default; demo skips it). |
+| `LALIGENCE_NOTIFIER` | Delivery channel for codes/notifications: `console` (log only) or `command:<shell>` to shell out to a mailer/SMS CLI. |
+| `LALIGENCE_NOTIFIER_ECHO_CODE` | Demo-only: echo the enrollment code in the request response. Never enable in production. |
 | `LALIGENCE_MAX_UPLOAD_SIZE_BYTES` | Upload size cap. |
 | `LALIGENCE_MAX_REQUESTS_PER_MINUTE` | Global per-IP rate limit (all endpoints). |
 | `DATABASE_URL` | Profile store; use PostgreSQL with TLS + encryption at rest in production. |

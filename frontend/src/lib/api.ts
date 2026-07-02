@@ -51,6 +51,16 @@ export interface ConsentInfo {
   notice: string;
 }
 
+export type ContactChannel = "email" | "sms";
+
+export interface ContactChallengeResponse {
+  sent: boolean;
+  channel: ContactChannel;
+  destination_masked: string;
+  expires_in: number;
+  debug_code: string | null;
+}
+
 export interface SelfServiceExportResponse {
   verified: boolean;
   match_score: number;
@@ -360,6 +370,22 @@ export const api = {
   // --- Consent + self-service data rights (GDPR) -----------------------------
 
   getConsent: () => request<ConsentInfo>("/api/consent", { retries: 1 }),
+
+  requestContactCode: (sessionId: string, channel: ContactChannel, destination: string) =>
+    request<ContactChallengeResponse>(`/api/verifications/${sessionId}/contact/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel, destination }),
+      retries: 1
+    }),
+
+  confirmContactCode: (sessionId: string, code: string) =>
+    request<VerificationResult>(`/api/verifications/${sessionId}/contact/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      retries: 1
+    }),
 
   exportMyData: (file: File | Blob) => {
     const body = new FormData();

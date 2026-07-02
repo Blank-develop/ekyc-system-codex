@@ -87,6 +87,9 @@ class VerificationResult(BaseModel):
     biometric: BiometricAnalysis = Field(default_factory=BiometricAnalysis)
     active_challenges: list[Challenge] = Field(default_factory=list)
     hand_challenges: list[Challenge] = Field(default_factory=list)
+    # IAL2 step 5: the applicant's address/phone has been confirmed via a returned
+    # enrollment code. Only enforced when LALIGENCE_REQUIRE_CONTACT_CONFIRMATION.
+    contact_confirmed: bool = False
     # Client-binding token, returned only when the session is created. Must be sent
     # back in the X-Session-Token header on subsequent session-scoped requests.
     session_token: str | None = None
@@ -194,6 +197,28 @@ class SelfServiceDeleteResponse(BaseModel):
     deleted: bool = False
     user_id: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
+
+
+class ContactChannel(str, Enum):
+    email = "email"
+    sms = "sms"
+
+
+class ContactRequest(BaseModel):
+    channel: ContactChannel
+    destination: str
+
+
+class ContactConfirmRequest(BaseModel):
+    code: str
+
+
+class ContactChallengeResponse(BaseModel):
+    sent: bool
+    channel: ContactChannel
+    destination_masked: str
+    expires_in: int
+    debug_code: str | None = None  # demo-only (LALIGENCE_NOTIFIER_ECHO_CODE)
 
 
 class FaceLoginResponse(BaseModel):

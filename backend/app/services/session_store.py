@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import random
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -73,6 +75,60 @@ class VerificationStore:
         self._selfie_face_embeddings: dict[UUID, list[float]] = {}
         # Per-session client-binding tokens (never persisted on the result object).
         self._tokens: dict[UUID, str] = {}
+        # Per-session contact-confirmation challenges (IAL2 enrollment code).
+        self._contact_challenges: dict[UUID, dict] = {}
+
+    @staticmethod
+    def _hash_code(session_id: UUID, code: str) -> str:
+        return hashlib.sha256(f"{session_id}:{code}".encode()).hexdigest()
+
+    def set_contact_challenge(self, session_id: UUID, channel: str, destination: str,
+                              code: str, ttl_minutes: int, now: datetime | None = None) -> None:
+        now = now or datetime.now(timezone.utc)
+        self._contact_challenges[session_id] = {
+            "channel": channel,
+            "destination": destination,
+            "code_hash": self._hash_code(session_id, code),
+            "expires_at": now + timedelta(minutes=ttl_minutes),
+            "attempts": 0,
+        }
+
+    def verify_contact_code(self, session_id: UUID, code: str, max_attempts: int,
+                            now: datetime | None = None) -> tuple[bool, str]:
+        now = now or datetime.now(timezone.utc)
+        challenge = self._contact_challenges.get(session_id)
+        if challenge is None:
+            return False, "NO_CONTACT_CHALLENGE"
+        if now > challenge["expires_at"]:
+            self._contact_challenges.pop(session_id, None)
+            return False, "CODE_EXPIRED"
+        if challenge["attempts"] >= max_attempts:
+            self._contact_challenges.pop(session_id, None)
+            return False, "TOO_MANY_ATTEMPTS"
+        code_hash = challenge.get("code_hash")
+        if not code_hash:
+            # Already consumed by a successful confirmation.
+            return False, "CODE_ALREADY_USED"
+        challenge["attempts"] += 1
+        if not hmac.compare_digest(code_hash, self._hash_code(session_id, code)):
+            return False, "CODE_INVALID"
+        session = self._sessions.get(session_id)
+        if session is not None:
+            session.contact_confirmed = True
+            session.updated_at = now
+        # Keep the destination for the notification-of-proofing step; drop the code.
+        challenge.pop("code_hash", None)
+        return True, "OK"
+
+    def contact_destination(self, session_id: UUID) -> tuple[str, str] | None:
+        challenge = self._contact_challenges.get(session_id)
+        if challenge is None:
+            return None
+        return challenge["channel"], challenge["destination"]
+
+    def reevaluate(self, session_id: UUID) -> VerificationResult:
+        """Re-run the decision engine after a non-store-mediated state change."""
+        return self._decide(self._sessions[session_id])
 
     # --- Session lifecycle / security ----------------------------------------
 
@@ -98,6 +154,7 @@ class VerificationStore:
     def drop(self, session_id: UUID) -> None:
         self._sessions.pop(session_id, None)
         self._tokens.pop(session_id, None)
+        self._contact_challenges.pop(session_id, None)
         self._document_face_embeddings.pop(session_id, None)
         self._selfie_face_embeddings.pop(session_id, None)
 
@@ -289,8 +346,12 @@ class VerificationStore:
         # genuine selfies stuck "pending".
         if not session.biometric.passive_liveness_passed:
             reasons.append("PASSIVE_LIVENESS_REQUIRED")
+        # IAL2 step 5: confirmed address/phone (only when enabled).
+        if settings.require_contact_confirmation and not session.contact_confirmed:
+            reasons.append("CONTACT_CONFIRMATION_REQUIRED")
 
-        incomplete = {"DOCUMENT_REQUIRED", "ACTIVE_LIVENESS_REQUIRED", "HAND_GESTURE_REQUIRED", "PASSIVE_LIVENESS_REQUIRED"}
+        incomplete = {"DOCUMENT_REQUIRED", "ACTIVE_LIVENESS_REQUIRED", "HAND_GESTURE_REQUIRED",
+                      "PASSIVE_LIVENESS_REQUIRED", "CONTACT_CONFIRMATION_REQUIRED"}
         hard_fail = [reason for reason in reasons if reason not in incomplete]
 
         if hard_fail:

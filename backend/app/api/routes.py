@@ -13,6 +13,9 @@ from app.models.schemas import (
     AuthUserInfo,
     CompleteChallengeRequest,
     ConsentInfo,
+    ContactChallengeResponse,
+    ContactConfirmRequest,
+    ContactRequest,
     CreateVerificationRequest,
     DeleteProfileResponse,
     Decision,
@@ -30,6 +33,7 @@ from app.models.schemas import (
 from app.services import auth as auth_service
 from app.services.audit import audit_log
 from app.services.key_provider import resolve_secret
+from app.services.notifier import get_notifier, mask_destination
 from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
@@ -288,6 +292,47 @@ async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest
     return store.complete_challenge(session_id, payload)
 
 
+@router.post("/verifications/{session_id}/contact/request", response_model=ContactChallengeResponse)
+async def request_contact_code(session_id: UUID, payload: ContactRequest, request: Request) -> ContactChallengeResponse:
+    """IAL2 step 5: send a one-time enrollment code to the applicant's address/phone."""
+    _get_session(session_id, request)
+    destination = payload.destination.strip()
+    if not destination:
+        raise HTTPException(status_code=400, detail="A destination address or phone is required.")
+    code = f"{secrets.randbelow(10**6):06d}"
+    store.set_contact_challenge(
+        session_id, payload.channel.value, destination, code, settings.contact_code_ttl_minutes
+    )
+    sent = await run_in_threadpool(
+        get_notifier().send, payload.channel.value, destination,
+        "Your Kyron verification code",
+        f"Your identity verification code is {code}. It expires in "
+        f"{settings.contact_code_ttl_minutes} minutes.",
+    )
+    audit_log.record("proofing", "contact_code_sent", actor=_client_ip(request),
+                     subject=str(session_id),
+                     detail={"channel": payload.channel.value, "destination": mask_destination(destination)})
+    return ContactChallengeResponse(
+        sent=sent,
+        channel=payload.channel,
+        destination_masked=mask_destination(destination),
+        expires_in=settings.contact_code_ttl_minutes * 60,
+        debug_code=code if settings.notifier_echo_code else None,
+    )
+
+
+@router.post("/verifications/{session_id}/contact/confirm", response_model=VerificationResult)
+async def confirm_contact_code(session_id: UUID, payload: ContactConfirmRequest, request: Request) -> VerificationResult:
+    """IAL2 step 5: confirm the returned enrollment code, binding the contact."""
+    _get_session(session_id, request)
+    ok, reason = store.verify_contact_code(session_id, payload.code.strip(), settings.contact_code_max_attempts)
+    audit_log.record("proofing", "contact_confirm", actor=_client_ip(request),
+                     subject=str(session_id), detail={"ok": ok, "reason": reason})
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"Contact confirmation failed: {reason}.")
+    return store.reevaluate(session_id)
+
+
 @router.post("/verifications/{session_id}/active-liveness", response_model=VerificationResult)
 async def complete_active_liveness(
     session_id: UUID,
@@ -473,6 +518,19 @@ async def enroll_face(session_id: UUID, request: Request) -> FaceEnrollmentRespo
         "enrollment", "enroll", actor=profile.user_id, subject=str(session_id),
         detail={"decision": session.decision.value, "consent_version": profile.consent_version},
     )
+    # IAL2 step 6: notify the applicant (at the confirmed contact) that a proofing
+    # and enrollment occurred.
+    contact = store.contact_destination(session_id)
+    if contact is not None:
+        channel, destination = contact
+        await run_in_threadpool(
+            get_notifier().send, channel, destination,
+            "Your identity was verified with Kyron",
+            f"An identity verification and enrollment for user '{profile.user_id}' "
+            "was just completed. If this wasn't you, contact support immediately.",
+        )
+        audit_log.record("proofing", "proofing_notification_sent", actor=_client_ip(request),
+                         subject=profile.user_id, detail={"channel": channel})
     return FaceEnrollmentResponse(enrolled=True, profile=profile)
 
 
