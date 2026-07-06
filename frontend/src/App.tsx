@@ -27,7 +27,7 @@ import logoUrl from "./assets/logo.png";
 import { ActiveLivenessCapture } from "./components/ActiveLivenessCapture";
 import { CameraCapture } from "./components/CameraCapture";
 import { HandGestureCapture } from "./components/HandGestureCapture";
-import { api, Challenge, ConsentInfo, DocumentType, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
+import { api, Challenge, DocumentType, FaceLoginResponse, UserProfile, VerificationResult } from "./lib/api";
 import { optimizeImageForUpload } from "./lib/image";
 
 type StepKey = "document" | "liveness" | "gesture" | "selfie" | "result";
@@ -519,10 +519,6 @@ export function App() {
         onGenerateUserId={() => setUserId(createDemoUserId())}
         onFaceLogin={() => setScreen("face-login")}
         onPayment={() => setScreen("payment")}
-        onManageData={() => {
-          setManageResult(null);
-          setScreen("manage-data");
-        }}
       />
     );
   }
@@ -728,8 +724,7 @@ function IntroScreen({
   onGenerateUserId,
   onStart,
   onFaceLogin,
-  onPayment,
-  onManageData
+  onPayment
 }: {
   userId: string;
   onUserIdChange: (value: string) => void;
@@ -737,30 +732,10 @@ function IntroScreen({
   onStart: () => void;
   onFaceLogin: () => void;
   onPayment: () => void;
-  onManageData: () => void;
 }) {
   const [showNewUserForm, setShowNewUserForm] = useState(false);
-  const [consent, setConsent] = useState<ConsentInfo | null>(null);
-  const [consented, setConsented] = useState(false);
   const canStart = userId.trim().length > 0;
 
-  useEffect(() => {
-    api
-      .getConsent()
-      .then((info) => {
-        setConsent(info);
-        setConsented(localStorage.getItem(`kyron.consent.${info.version}`) === "true");
-      })
-      .catch(() => undefined);
-  }, []);
-
-  const toggleConsent = (checked: boolean) => {
-    setConsented(checked);
-    if (!consent) return;
-    const key = `kyron.consent.${consent.version}`;
-    if (checked) localStorage.setItem(key, "true");
-    else localStorage.removeItem(key);
-  };
   const openNewUserForm = () => {
     if (!canStart) {
       onGenerateUserId();
@@ -779,18 +754,6 @@ function IntroScreen({
             face matching, and clear risk decisions in one IAL2-aligned workflow.
           </p>
           <DemoWarning compact />
-          <label className="consent-gate">
-            <input
-              type="checkbox"
-              checked={consented}
-              onChange={(event) => toggleConsent(event.target.checked)}
-            />
-            <span>
-              {consent?.notice ??
-                "I consent to biometric processing for identity verification."}
-              {consent && <em className="consent-version"> (terms {consent.version})</em>}
-            </span>
-          </label>
           {showNewUserForm ? (
             <div className="new-user-panel">
               <label className="user-id-field">
@@ -803,7 +766,7 @@ function IntroScreen({
                 />
               </label>
               <div className="intro-actions">
-                <button className="primary-button intro-start" type="button" onClick={onStart} disabled={!canStart || !consented}>
+                <button className="primary-button intro-start" type="button" onClick={onStart} disabled={!canStart}>
                   Start verification
                   <ArrowRight size={18} />
                 </button>
@@ -819,25 +782,20 @@ function IntroScreen({
             </div>
           ) : (
             <div className="intro-actions">
-              <button className="primary-button intro-start" type="button" onClick={onPayment} disabled={!consented}>
+              <button className="primary-button intro-start" type="button" onClick={onPayment}>
                 <Send size={18} />
                 Face Pay transfer
               </button>
-              <button className="secondary-button intro-start" type="button" onClick={openNewUserForm} disabled={!consented}>
+              <button className="secondary-button intro-start" type="button" onClick={openNewUserForm}>
                 <UserPlus size={18} />
                 New user signup
               </button>
-              <button className="text-action-button" type="button" onClick={onFaceLogin} disabled={!consented}>
+              <button className="text-action-button" type="button" onClick={onFaceLogin}>
                 <KeyRound size={16} />
                 Face login only
               </button>
             </div>
           )}
-          {!consented && <p className="consent-hint">Please accept the notice above to continue.</p>}
-          <button className="text-action-button intro-manage" type="button" onClick={onManageData}>
-            <ShieldCheck size={16} />
-            Manage my data (export or delete)
-          </button>
         </div>
 
         <div className="intro-visual" aria-hidden="true">
@@ -892,10 +850,6 @@ function IntroScreen({
             <span>Risk decision</span>
           </div>
         </div>
-        <a className="intro-staff-link" href="#admin">
-          <LockKeyhole size={13} />
-          Staff console
-        </a>
       </section>
     </main>
   );
