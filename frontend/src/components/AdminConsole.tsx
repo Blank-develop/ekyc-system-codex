@@ -201,7 +201,7 @@ export function AdminConsole() {
 
       <section className="admin-card">
         <div className="admin-section-head">
-          <h2>Enrolled profiles <span className="admin-count">{profiles.length}</span></h2>
+          <h2>Enrolled Face IDs <span className="admin-count">{profiles.length}</span></h2>
           <div className="admin-actions">
             <button className="admin-ghost" onClick={loadProfiles} disabled={loadingProfiles}>
               <RefreshCw size={14} /> Refresh
@@ -219,18 +219,20 @@ export function AdminConsole() {
         )}
 
         {loadingProfiles ? (
-          <p className="admin-muted">Loading profiles…</p>
+          <p className="admin-muted">Loading Face IDs…</p>
         ) : profiles.length === 0 ? (
-          <p className="admin-muted">No enrolled profiles.</p>
+          <p className="admin-muted">No enrolled Face IDs.</p>
         ) : (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th>Face ID</th>
                   <th>User</th>
                   <th>Name</th>
                   <th>Nationality</th>
                   <th>Enrolled</th>
+                  <th>Last login</th>
                   <th>Consent</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -238,13 +240,15 @@ export function AdminConsole() {
               <tbody>
                 {profiles.map((p) => (
                   <tr key={p.face_id}>
+                    <td><code className="admin-hash" title={p.face_id}>{p.face_id.slice(0, 8)}…</code></td>
                     <td>{p.user_id}</td>
                     <td>{p.full_name ?? "—"}</td>
                     <td>{p.nationality ?? "—"}</td>
                     <td>{p.enrolled_at ? new Date(p.enrolled_at).toLocaleDateString() : "—"}</td>
+                    <td>{p.last_login_at ? new Date(p.last_login_at).toLocaleString() : "—"}</td>
                     <td>{p.consent_version ?? "—"}</td>
                     <td>
-                      <button className="admin-icon-danger" onClick={() => handleDelete(p)} title="Delete profile">
+                      <button className="admin-icon-danger" onClick={() => handleDelete(p)} title="Delete this Face ID">
                         <Trash2 size={15} />
                       </button>
                     </td>
