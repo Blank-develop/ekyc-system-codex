@@ -178,6 +178,7 @@ class VerificationStore:
                 type=ChallengeType.hand_gesture,
                 prompt=prompt,
                 instruction=instruction,
+                image_url=f"/gestures/{key}.png",
                 nonce=secrets.token_urlsafe(16),
             )
             for key, prompt, instruction in sample_hand_prompts(3)

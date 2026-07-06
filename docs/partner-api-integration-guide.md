@@ -76,6 +76,18 @@ liveness; the gesture step requires the server-verified active-liveness step fir
 arrays in the session tell your app which prompts to show and carry the `challenge_id`
 (and gesture `nonce`) you echo back.
 
+**Gesture prompt visuals.** Each hand-gesture challenge includes a stable `id`
+(e.g. `peace`), a text `prompt`/`instruction`, and an **`image_url`** pointing to a
+reference image the app serves as a static asset (e.g. `GET /gestures/peace.png`).
+If you build your own UI, either display our image via `image_url` (prepend the base
+URL) or render your own visual keyed by the gesture `id` — the `id` + text is the
+stable, UI-agnostic contract.
+
+```json
+{ "id": "peace", "type": "hand_gesture", "prompt": "Peace sign",
+  "instruction": "Show a peace sign inside the circle.", "image_url": "/gestures/peace.png" }
+```
+
 ### Example — start a session
 
 ```bash

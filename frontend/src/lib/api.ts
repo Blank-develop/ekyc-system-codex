@@ -80,6 +80,7 @@ export interface Challenge {
   type: ChallengeType;
   prompt: string;
   instruction: string;
+  image_url?: string | null;
   passed: boolean;
   nonce?: string | null;
 }
