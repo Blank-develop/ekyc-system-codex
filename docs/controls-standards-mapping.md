@@ -141,6 +141,8 @@ of an audit: "for requirement X, show me the control and the proof."
 
 ---
 
+*See also the one-page* **`docs/ial2-readiness-brief.md`** *for a leadership/assessor summary.*
+
 *Cross-references:* `SECURITY.md` (posture + production-readiness tiers),
 `docs/security-test-cases.md` (A1–A16 attack/security tests), `docs/face-matching-results.md`,
 `docs/dataset-collection-plan.md`, `docs/in-region-hosting-plan.md`, `docs/roadmap.html`,
