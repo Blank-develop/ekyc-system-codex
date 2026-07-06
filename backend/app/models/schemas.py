@@ -22,6 +22,9 @@ class Challenge(BaseModel):
     type: ChallengeType
     prompt: str
     instruction: str
+    # Reference image for the prompt (hand gestures), so partner UIs can display
+    # the same visual. Served as a static asset by the app; None when there is none.
+    image_url: str | None = None
     passed: bool = False
     # Server-issued one-time token; the client must echo it to complete the
     # challenge. Consumed on use (set to None) so a completion cannot be replayed.

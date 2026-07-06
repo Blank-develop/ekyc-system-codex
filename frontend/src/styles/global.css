@@ -1572,6 +1572,18 @@ p {
   text-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
 }
 
+/* When the gesture reference is a generated image (not the emoji fallback). */
+img.gesture-card-visual {
+  padding: 4px;
+  object-fit: contain;
+}
+.gesture-target img.gesture-target-visual {
+  width: clamp(4rem, 13vmin, 8.5rem);
+  height: clamp(4rem, 13vmin, 8.5rem);
+  object-fit: contain;
+  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, 0.4));
+}
+
 .gesture-target.inside {
   border-color: white;
   background: rgba(255, 255, 255, 0.13);

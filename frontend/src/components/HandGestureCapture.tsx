@@ -241,7 +241,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
           return (
             <div className={`gesture-card ${challenge.passed ? "passed" : ""} ${isCurrent ? "current" : ""}`} key={challenge.id}>
               <span>
-                <span className="gesture-card-visual" aria-hidden="true">{gestureVisual(challenge.id)}</span>
+                <GestureVisual className="gesture-card-visual" challengeId={challenge.id} />
                 {challenge.passed ? <Check size={16} /> : challenge.prompt}
               </span>
               <small>{challenge.passed ? "Completed" : isCurrent ? challenge.instruction : "Waiting for previous gesture"}</small>
@@ -263,7 +263,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
             }}
             aria-hidden="true"
           >
-            <span className="gesture-target-visual">{gestureVisual(currentChallenge?.id)}</span>
+            <GestureVisual className="gesture-target-visual" challengeId={currentChallenge?.id} />
             {gestureMatched && (
               <svg className="gesture-progress-ring" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="47" />
@@ -462,4 +462,28 @@ function gestureVisual(challengeId?: string) {
   if (challengeId === "pinched_fingers") return "🤌";
   if (challengeId === "crossed_fingers") return "🤞";
   return "✓";
+}
+
+// Renders the gesture reference image from /gestures/<id>.png (drop your generated
+// PNGs into frontend/public/gestures/). Falls back to the emoji automatically if an
+// image is missing, so nothing breaks while images are still being added.
+function GestureVisual({ challengeId, className }: { challengeId?: string; className: string }) {
+  const [errored, setErrored] = useState(false);
+  useEffect(() => setErrored(false), [challengeId]);
+  if (!challengeId || errored) {
+    return (
+      <span className={className} aria-hidden="true">
+        {gestureVisual(challengeId)}
+      </span>
+    );
+  }
+  return (
+    <img
+      className={className}
+      src={`/gestures/${challengeId}.png`}
+      alt=""
+      aria-hidden="true"
+      onError={() => setErrored(true)}
+    />
+  );
 }
