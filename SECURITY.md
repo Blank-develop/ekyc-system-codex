@@ -179,7 +179,7 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | Env var | Purpose |
 | --- | --- |
 | `LALIGENCE_ADMIN_API_TOKEN` | Enables the profile admin endpoints; required in the `X-Admin-Token` header. Unset = endpoints disabled. |
-| `LALIGENCE_API_KEYS` | Comma-separated API keys. When set, all `/api` endpoints require a matching `X-API-Key` header. Unset = open (public demo). |
+| `LALIGENCE_API_KEYS` | Comma-separated API keys for partner integrations. When set, all `/api` endpoints require a matching `X-API-Key` header. Unset = open (public demo). See `docs/partner-api-integration-guide.md`. |
 | `LALIGENCE_JWT_SECRET` | Enables per-user OAuth2/JWT auth. When set, `POST /api/auth/token` issues signed access tokens and admin endpoints accept an `admin`-role Bearer token. Generate: `openssl rand -hex 32`. Unset = JWT auth off. |
 | `LALIGENCE_AUTH_USERS` | Comma-separated `username:pbkdf2_hash:role` entries (generate a hash with `scripts/hash_password.py`). |
 | `LALIGENCE_JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes (default 60). |
