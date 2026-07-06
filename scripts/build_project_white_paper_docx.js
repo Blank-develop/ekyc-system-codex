@@ -1,9 +1,11 @@
 const fs = require("fs");
 const {
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun,
   AlignmentType, LevelFormat, HeadingLevel, BorderStyle, WidthType, ShadingType,
   TableOfContents, PageNumber, PageBreak, Header, Footer, VerticalAlign,
 } = require("docx");
+
+const WORKFLOW_IMG = "/Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/docs/system-workflow.png";
 
 const OUT = "/Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/docs/kyron-ekyc-white-paper-draft.docx";
 const CW = 9360; // content width (US Letter, 1" margins)
@@ -119,6 +121,12 @@ children.push(BULLET("**Passive anti-spoof (PAD):** a MiniFASNet-family model wi
 children.push(BULLET("**Active liveness & gesture:** MediaPipe FaceMesh and Hands drive randomized head-action and finger-count challenges, with server-side verification of evidence bursts."));
 children.push(BULLET("**Document OCR & fraud checks:** Tesseract/Surya OCR with passport TD3 MRZ parsing and check-digit validation, plus tamper and recapture (print/screen) analysis."));
 children.push(P("Verified profiles (a protected face template plus minimal document attributes) are stored in a SQL profile store (SQLite for development, PostgreSQL for production). Raw document, selfie, and liveness images are analyzed in memory and never written to disk."));
+children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 160, after: 40 },
+  children: [new ImageRun({ type: "png", data: fs.readFileSync(WORKFLOW_IMG),
+    transformation: { width: 600, height: 424 },
+    altText: { title: "Kyron eKYC system workflow", description: "End-to-end verification workflow: document proofing, liveness, gesture, face match, decision, enrollment.", name: "SystemWorkflow" } })] }));
+children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 },
+  children: [new TextRun({ text: "Figure 1. Kyron eKYC system workflow — from document capture through the risk decision and enrollment.", italics: true, size: 18, color: MUTE })] }));
 
 // 4. Workflow
 children.push(H1("4. The Verification Workflow"));
