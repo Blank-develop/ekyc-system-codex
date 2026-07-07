@@ -42,3 +42,14 @@ challenge (see `docs/partner-api-integration-guide.md`).
   well under 1 MB.
 - **Naming:** the filename must exactly match the gesture ID above (lowercase,
   underscores). A wrong/missing name simply shows the emoji fallback.
+
+## How the current images were made
+
+Regenerate with `scripts/build_gesture_images.py`. 20 of the 23 use **Google Noto
+Emoji** color artwork (medium-light skin tone) — realistic, gradient-shaded flat
+hands. Three gestures have no Unicode emoji (`three`, `four`, `l_shape`) and are
+drawn as a matching skin-gradient SVG.
+
+**Attribution:** hand artwork © the Noto Emoji project, licensed under the
+**Apache License 2.0** (https://github.com/googlefonts/noto-emoji). To swap in your
+own brand illustrations, just drop replacement PNGs here with the same filenames.
