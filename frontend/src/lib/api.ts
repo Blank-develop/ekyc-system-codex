@@ -46,6 +46,48 @@ export interface AuditVerifyResponse {
   broken_at: number | null;
 }
 
+export interface Attempt {
+  session_id: string;
+  user_id: string;
+  decision: Decision;
+  reason_codes: string[];
+  document_type: string | null;
+  document_status: string | null;
+  document_fraud_risk: number | null;
+  active_liveness_passed: boolean;
+  hand_challenge_passed: boolean;
+  passive_liveness_passed: boolean;
+  face_match_score: number | null;
+  passive_liveness_risk: number | null;
+  contact_confirmed: boolean;
+  client_ip: string | null;
+  step_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttemptListResponse {
+  attempts: Attempt[];
+  total: number;
+}
+
+export interface AttemptSummary {
+  total: number;
+  passed: number;
+  pending: number;
+  rejected: number;
+}
+
+export interface AdminOverview {
+  attempts: AttemptSummary;
+  enrolled_face_ids: number;
+  audit_chain_ok: boolean;
+  audit_entries: number;
+  audit_log_enabled: boolean;
+  profile_retention_days: number;
+  attempt_retention_days: number;
+}
+
 export interface ConsentInfo {
   version: string;
   notice: string;
@@ -367,6 +409,23 @@ export const api = {
 
   verifyAudit: () =>
     request<AuditVerifyResponse>("/api/audit/verify", { retries: 1 }),
+
+  adminOverview: () => request<AdminOverview>("/api/admin/overview", { retries: 1 }),
+
+  listAttempts: (opts: { limit?: number; offset?: number; decision?: string; userId?: string } = {}) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(opts.limit ?? 50));
+    params.set("offset", String(opts.offset ?? 0));
+    if (opts.decision) params.set("decision", opts.decision);
+    if (opts.userId) params.set("user_id", opts.userId);
+    return request<AttemptListResponse>(`/api/attempts?${params.toString()}`, { retries: 1 });
+  },
+
+  purgeExpiredAttempts: () =>
+    request<DeleteProfileResponse>("/api/attempts/purge-expired", {
+      method: "POST",
+      retries: 1
+    }),
 
   // --- Consent + self-service data rights (GDPR) -----------------------------
 

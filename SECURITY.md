@@ -148,7 +148,17 @@ Prioritized. Tier 1 items are blockers.
   are detectable via `GET /api/audit/verify`; keyed (HMAC) when
   `LALIGENCE_ENCRYPTION_KEY` is set. No raw PII/biometrics logged. Viewable + a
   one-click integrity check in the staff console. Still needed: ship logs to an
-  external WORM/SIEM sink, and cover per-step verification decisions.
+  external WORM/SIEM sink.
+- [x] **Verification-attempts log** (`services/attempt_store.py`): every eKYC
+  session's decision and per-step outcomes (document/liveness/gesture/face-match
+  results, reason codes, client IP) are persisted — one row per session, upserted
+  after each step — so operators can see every attempt and its result, not just
+  live in-memory sessions. Same minimization principle as the audit log: no raw
+  images, no biometric embeddings, no document PII. Retention via
+  `LALIGENCE_ATTEMPT_RETENTION_DAYS` + `POST /api/attempts/purge-expired`.
+  Viewable (with filters) in the staff console's Attempts tab, alongside an
+  Overview dashboard (attempt counts by decision, enrolled Face ID count, audit
+  chain status).
 - [ ] **Monitoring/alerting** (SIEM), anomaly detection, patch management.
 - [ ] **Independent penetration test + privacy review** before launch.
 - [ ] **Incident-response & breach-notification** plan (biometric breaches are
@@ -191,6 +201,7 @@ Applicability** (with a prioritized G1–G21 closure plan) — is in **`docs/pol
 | `LALIGENCE_CONSENT_VERSION` | Consent terms version stamped on each enrolled profile (with a timestamp) for an auditable consent record. Default `2026-06-v1`. |
 | `LALIGENCE_PROFILE_RETENTION_DAYS` | Data-retention window in days. `>0` lets `POST /api/profiles/purge-expired` delete profiles idle longer than this. `0` (default) = retain indefinitely. |
 | `LALIGENCE_AUDIT_LOG_ENABLED` | Tamper-evident hash-chained audit log of auth/PII-access/admin/enrollment events. `true` (default). Keyed with `LALIGENCE_ENCRYPTION_KEY` when set. |
+| `LALIGENCE_ATTEMPT_RETENTION_DAYS` | Retention window for the verification-attempts admin log. `>0` lets `POST /api/attempts/purge-expired` delete attempts idle longer than this. `0` (default) = retain indefinitely. |
 | `LALIGENCE_FACE_LOGIN_EXPOSE_PII` | `false` (default) returns a redacted face-login profile; set `true` only in trusted/authenticated deployments. |
 | `LALIGENCE_TRUST_PROXY_HEADERS` | `true` behind a trusted proxy (HF/Cloudflare) so client IP comes from `CF-Connecting-IP` / `X-Forwarded-For` for per-client throttling. |
 | `LALIGENCE_FACE_LOGIN_MAX_PER_MINUTE` | Per-client face-login attempt limit (default 12). |
