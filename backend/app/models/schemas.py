@@ -183,6 +183,48 @@ class AuditVerifyResponse(BaseModel):
     broken_at: int | None = None
 
 
+class AttemptOut(BaseModel):
+    session_id: str
+    user_id: str
+    decision: str
+    reason_codes: list[str] = Field(default_factory=list)
+    document_type: str | None = None
+    document_status: str | None = None
+    document_fraud_risk: float | None = None
+    active_liveness_passed: bool = False
+    hand_challenge_passed: bool = False
+    passive_liveness_passed: bool = False
+    face_match_score: float | None = None
+    passive_liveness_risk: float | None = None
+    contact_confirmed: bool = False
+    client_ip: str | None = None
+    step_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class AttemptListResponse(BaseModel):
+    attempts: list[AttemptOut] = Field(default_factory=list)
+    total: int = 0
+
+
+class AttemptSummary(BaseModel):
+    total: int = 0
+    passed: int = 0
+    pending: int = 0
+    rejected: int = 0
+
+
+class AdminOverviewResponse(BaseModel):
+    attempts: AttemptSummary
+    enrolled_face_ids: int
+    audit_chain_ok: bool
+    audit_entries: int
+    audit_log_enabled: bool
+    profile_retention_days: int
+    attempt_retention_days: int
+
+
 class ConsentInfo(BaseModel):
     version: str
     notice: str

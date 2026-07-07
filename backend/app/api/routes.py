@@ -8,6 +8,9 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.schemas import (
+    AdminOverviewResponse,
+    AttemptListResponse,
+    AttemptSummary,
     AuditListResponse,
     AuditVerifyResponse,
     AuthUserInfo,
@@ -31,6 +34,7 @@ from app.models.schemas import (
     VerificationResult,
 )
 from app.services import auth as auth_service
+from app.services.attempt_store import attempt_store
 from app.services.audit import audit_log
 from app.services.key_provider import resolve_secret
 from app.services.notifier import get_notifier, mask_destination
@@ -68,6 +72,13 @@ def _client_ip(request: Request) -> str:
         if forwarded:
             return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _record_attempt(result: VerificationResult, request: Request) -> VerificationResult:
+    """Log the session's current state to the admin attempts store, then return
+    the same result unchanged (so this can wrap a `return` without extra lines)."""
+    attempt_store.record(result, _client_ip(request))
+    return result
 
 
 def face_login_rate_limit(request: Request) -> None:
@@ -219,8 +230,9 @@ def warm_face_login_dependencies() -> None:
 
 
 @router.post("/verifications", response_model=VerificationResult)
-async def create_verification(payload: CreateVerificationRequest) -> VerificationResult:
+async def create_verification(payload: CreateVerificationRequest, request: Request) -> VerificationResult:
     result = store.create(payload.user_id)
+    _record_attempt(result, request)
     # Return the client-binding token once, at creation, without persisting it on
     # the stored result (so later responses don't leak it).
     return result.model_copy(update={"session_token": store.session_token(result.session_id)})
@@ -268,7 +280,7 @@ async def upload_document(
         analysis.signals.extend(face_result.signals)
         if analysis.status == "passed":
             analysis.status = "rejected"
-    return store.set_document(session_id, analysis)
+    return _record_attempt(store.set_document(session_id, analysis), request)
 
 
 @router.post("/verifications/{session_id}/challenge", response_model=VerificationResult)
@@ -289,7 +301,7 @@ async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest
     # nonce. It is consumed on success, so a captured request cannot be replayed.
     if not target.nonce or not payload.nonce or not secrets.compare_digest(payload.nonce, target.nonce):
         raise HTTPException(status_code=401, detail="Invalid, missing, or already-used challenge nonce.")
-    return store.complete_challenge(session_id, payload)
+    return _record_attempt(store.complete_challenge(session_id, payload), request)
 
 
 @router.post("/verifications/{session_id}/contact/request", response_model=ContactChallengeResponse)
@@ -330,7 +342,7 @@ async def confirm_contact_code(session_id: UUID, payload: ContactConfirmRequest,
                      subject=str(session_id), detail={"ok": ok, "reason": reason})
     if not ok:
         raise HTTPException(status_code=400, detail=f"Contact confirmation failed: {reason}.")
-    return store.reevaluate(session_id)
+    return _record_attempt(store.reevaluate(session_id), request)
 
 
 @router.post("/verifications/{session_id}/active-liveness", response_model=VerificationResult)
@@ -454,12 +466,12 @@ async def complete_active_liveness(
         **face_result.checks,
         **passive_result.checks,
     }
-    return store.complete_active_challenge_with_evidence(
+    return _record_attempt(store.complete_active_challenge_with_evidence(
         session_id,
         CompleteChallengeRequest(challenge_id=challenge_id, passed=passed),
         checks,
         signals if not passed else [],
-    )
+    ), request)
 
 
 @router.post("/verifications/{session_id}/selfie", response_model=VerificationResult)
@@ -499,7 +511,7 @@ async def analyze_selfie(
         }
     )
     store.set_selfie_face_embedding(session_id, selfie_face.embedding if analysis.passive_liveness_passed else None)
-    return store.set_selfie(session_id, analysis)
+    return _record_attempt(store.set_selfie(session_id, analysis), request)
 
 
 @router.post("/verifications/{session_id}/enroll-face", response_model=FaceEnrollmentResponse)
@@ -688,6 +700,46 @@ async def read_audit_log(limit: int = 100) -> AuditListResponse:
 async def verify_audit_log() -> AuditVerifyResponse:
     result = await run_in_threadpool(audit_log.verify_chain)
     return AuditVerifyResponse(**result)
+
+
+@router.get("/attempts", response_model=AttemptListResponse, dependencies=[Depends(require_admin)])
+async def list_attempts(
+    limit: int = 50, offset: int = 0, decision: str | None = None, user_id: str | None = None
+) -> AttemptListResponse:
+    """Every eKYC attempt (one row per session_id), newest first. Filter by
+    decision (passed/pending/rejected) and/or user_id; paginate with limit/offset."""
+    attempts, total = await run_in_threadpool(
+        attempt_store.list_attempts, max(1, min(limit, 200)), max(0, offset), decision, user_id
+    )
+    return AttemptListResponse(attempts=attempts, total=total)
+
+
+@router.post("/attempts/purge-expired", response_model=DeleteProfileResponse, dependencies=[Depends(require_admin)])
+async def purge_expired_attempts(request: Request) -> DeleteProfileResponse:
+    """Retention enforcement for the attempts log: delete attempts whose last
+    update is older than LALIGENCE_ATTEMPT_RETENTION_DAYS. No-op when disabled."""
+    deleted_count = await run_in_threadpool(attempt_store.purge_older_than, settings.attempt_retention_days)
+    audit_log.record("retention", "purge_attempts", actor=_client_ip(request),
+                     detail={"deleted": deleted_count, "retention_days": settings.attempt_retention_days})
+    return DeleteProfileResponse(deleted=deleted_count > 0, deleted_count=deleted_count)
+
+
+@router.get("/admin/overview", response_model=AdminOverviewResponse, dependencies=[Depends(require_admin)])
+async def admin_overview() -> AdminOverviewResponse:
+    """Aggregate stats for the admin portal's Overview tab: attempt counts by
+    decision, enrolled Face ID count, and audit-chain integrity."""
+    summary = await run_in_threadpool(attempt_store.summary)
+    profiles = await run_in_threadpool(profile_store.list_profiles)
+    chain = await run_in_threadpool(audit_log.verify_chain)
+    return AdminOverviewResponse(
+        attempts=AttemptSummary(**summary),
+        enrolled_face_ids=len(profiles),
+        audit_chain_ok=chain["ok"],
+        audit_entries=chain["entries"],
+        audit_log_enabled=settings.audit_log_enabled,
+        profile_retention_days=settings.profile_retention_days,
+        attempt_retention_days=settings.attempt_retention_days,
+    )
 
 
 @router.post("/face-login", response_model=FaceLoginResponse, dependencies=[Depends(face_login_rate_limit)])
