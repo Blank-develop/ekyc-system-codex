@@ -518,7 +518,6 @@ export function App() {
         onStart={() => setScreen("verify")}
         onGenerateUserId={() => setUserId(createDemoUserId())}
         onFaceLogin={() => setScreen("face-login")}
-        onPayment={() => setScreen("payment")}
       />
     );
   }
@@ -723,15 +722,13 @@ function IntroScreen({
   onUserIdChange,
   onGenerateUserId,
   onStart,
-  onFaceLogin,
-  onPayment
+  onFaceLogin
 }: {
   userId: string;
   onUserIdChange: (value: string) => void;
   onGenerateUserId: () => void;
   onStart: () => void;
   onFaceLogin: () => void;
-  onPayment: () => void;
 }) {
   const [showNewUserForm, setShowNewUserForm] = useState(false);
   const canStart = userId.trim().length > 0;
@@ -782,17 +779,13 @@ function IntroScreen({
             </div>
           ) : (
             <div className="intro-actions">
-              <button className="primary-button intro-start" type="button" onClick={onPayment}>
-                <Send size={18} />
-                Face Pay transfer
-              </button>
-              <button className="secondary-button intro-start" type="button" onClick={openNewUserForm}>
+              <button className="primary-button intro-start" type="button" onClick={openNewUserForm}>
                 <UserPlus size={18} />
                 New user signup
               </button>
-              <button className="text-action-button" type="button" onClick={onFaceLogin}>
-                <KeyRound size={16} />
-                Face login only
+              <button className="secondary-button intro-start" type="button" onClick={onFaceLogin}>
+                <KeyRound size={18} />
+                Login
               </button>
             </div>
           )}
@@ -1281,7 +1274,7 @@ function DocumentStep({
           <Upload size={24} />
           <span>Upload {label.upload} image</span>
           <small>{disabled ? "Wait until the session is ready" : "JPG, PNG, or WebP"}</small>
-          <input id="passport-upload" type="file" accept="image/*" capture="environment" onChange={onUpload} disabled={disabled} />
+          <input id="passport-upload" type="file" accept="image/*" onChange={onUpload} disabled={disabled} />
         </label>
       </div>
       <CameraCapture
