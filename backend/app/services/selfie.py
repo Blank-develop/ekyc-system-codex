@@ -196,6 +196,14 @@ class SelfieAnalyzer:
         display_like_ratio = display_like_count / max(len(analyses), 1)
         held_phone_count = sum(score >= 0.42 for score in held_phone_scores)
         held_phone_ratio = held_phone_count / max(len(held_phone_scores), 1)
+        # Overexposure / strong backlight washes out the face and pushes the PAD
+        # model toward a false spoof verdict. Detect it so we can give the user
+        # actionable lighting guidance instead of an unhelpful "replay" message.
+        brightness_vals = [self._float_check(analysis.selfie_checks, "passive_spoof_face_brightness") for analysis in analyses]
+        glare_vals = [self._float_check(analysis.selfie_checks, "passive_spoof_glare_ratio") for analysis in analyses]
+        avg_brightness = sum(brightness_vals) / max(len(brightness_vals), 1)
+        avg_glare = sum(glare_vals) / max(len(glare_vals), 1)
+        lighting_too_bright = avg_brightness >= 150 or avg_glare >= 0.05 or max(glare_vals, default=0.0) >= 0.2
         face_width_ratios = [self._float_check(analysis.selfie_checks, "selfie_face_width_ratio") for analysis in analyses]
         adequate_face_indices = [index for index, ratio_value in enumerate(face_width_ratios) if ratio_value >= MIN_FACE_WIDTH_RATIO]
         small_face_count = len(analyses) - len(adequate_face_indices)
@@ -254,6 +262,11 @@ class SelfieAnalyzer:
             burst_signals.append(_signal("SELFIE_BURST_FACE_TOO_SMALL", "You are a bit too far from the camera. Move your face closer until it fills the yellow circle, then capture again.", "high", 0.7))
         if model_spoof_recurring:
             burst_signals.append(_signal("SELFIE_BURST_MODEL_SPOOF_HIGH", "Anti-spoofing model detected recurring spoof risk across the selfie burst.", "high", max(reliable_model_risks)))
+        # Lighting hint (medium — does not by itself fail): surfaced so the UI can
+        # tell a genuine user to fix bright/backlit conditions rather than showing a
+        # confusing "replay" message.
+        if lighting_too_bright:
+            burst_signals.append(_signal("SELFIE_LIGHTING_TOO_BRIGHT", "Strong light or a bright background is washing out the selfie; move to softer, even lighting.", "medium", 0.4))
         burst_signals = self._dedupe_signals([*burst_signals, *strong_frame_signals])
 
         max_frame_risk = max(frame_risks, default=1.0)

@@ -85,8 +85,13 @@ const selfieFailureMessage = (codes: string[], matchScore: number) => {
   if (codes.includes("PASSPORT_FACE_REFERENCE_MISSING")) {
     return "Document portrait could not be used as a face reference. Re-upload a clearer document image.";
   }
+  // Lighting is the most common cause of a false "spoof" for genuine users, so
+  // give actionable guidance before the generic replay message.
+  if (codes.includes("SELFIE_LIGHTING_TOO_BRIGHT")) {
+    return "Your lighting looks too bright or you're backlit. Move away from the bright window or light behind you, face a soft even light, remove glare from glasses, then capture again.";
+  }
   if (codes.some((code) => code.includes("SPOOF") || code.includes("SCREEN"))) {
-    return "Possible screen or photo replay detected. Capture a live selfie directly from the camera.";
+    return "We couldn't confirm a live face. If you're using your real camera, this is usually lighting or background — avoid a bright window/light behind you, move to an evenly lit spot, remove glare from glasses, hold steady, and capture again.";
   }
   if (codes.includes("SELFIE_LOW_RESOLUTION") || codes.includes("SELFIE_BLUR_DETECTED")) {
     return "Selfie is too blurry or low resolution. Move closer and capture again.";
