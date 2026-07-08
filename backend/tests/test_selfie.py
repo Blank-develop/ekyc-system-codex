@@ -326,7 +326,9 @@ def test_multiframe_selfie_rejects_recurring_held_phone_screen() -> None:
                 "passive_spoof_display_surface_score": 0.22,
                 "passive_spoof_screen_frame_score": 0.18,
                 "passive_spoof_held_phone_score": 0.44,
-                "passive_spoof_model_risk": 0.12,
+                # A genuine held-phone replay keeps the PAD model risk elevated;
+                # this corroboration is what confirms the held-phone hard-fail.
+                "passive_spoof_model_risk": 0.6,
             },
             signals=[],
         )
@@ -338,6 +340,37 @@ def test_multiframe_selfie_rejects_recurring_held_phone_screen() -> None:
 
     assert analysis.passive_liveness_passed is False
     assert "SELFIE_BURST_HELD_PHONE_REPLAY" in {signal.code for signal in analysis.selfie_signals}
+
+
+def test_multiframe_selfie_allows_held_phone_false_positive_with_low_model() -> None:
+    # A real face (e.g. glasses/reflections) can trip the held-phone heuristic while
+    # the PAD model stays LOW. Without model corroboration this must NOT hard-fail —
+    # the fix for genuine faces being wrongly rejected as a replay.
+    image = Image.new("RGB", (900, 1200), (210, 214, 220))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((260, 210, 640, 650), fill=(198, 142, 105), outline=(70, 48, 42), width=6)
+    draw.rectangle((320, 650, 580, 1040), fill=(35, 52, 78))
+    frames = [_jpeg_bytes(image) for _ in range(8)]
+    sequence = SequencePassiveSpoofAnalyzer([
+        PassiveSpoofResult(
+            risk=0.36,
+            passed=True,
+            checks={
+                "passive_spoof_risk": 0.36,
+                "passive_spoof_display_surface_score": 0.22,
+                "passive_spoof_screen_frame_score": 0.18,
+                "passive_spoof_held_phone_score": 0.44,   # recurring heuristic hit
+                "passive_spoof_model_risk": 0.12,          # but model says genuine
+            },
+            signals=[],
+        )
+        for _ in frames
+    ])
+    analyzer = SelfieAnalyzer(face_recognizer=FakeFaceRecognizer(), passive_spoof=sequence)
+
+    analysis = analyzer.analyze_frames(frames, [f"frame-{index}.jpg" for index in range(len(frames))], reference_embedding=[1.0, 0.0, 0.0])
+
+    assert "SELFIE_BURST_HELD_PHONE_REPLAY" not in {signal.code for signal in analysis.selfie_signals}
 
 
 def test_multiframe_selfie_live_like_motion_can_pass() -> None:

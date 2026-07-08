@@ -202,15 +202,29 @@ class SelfieAnalyzer:
         # PAD model output on small/distant faces is unreliable and biased
         # toward spoof, so only frames with an adequate face size vote.
         reliable_model_risks = [model_risks[index] for index in adequate_face_indices] or model_risks
+        max_reliable_model_risk = max(reliable_model_risks, default=0.0)
         model_high_count = sum(risk >= 0.72 for risk in reliable_model_risks)
         model_high_ratio = model_high_count / max(len(reliable_model_risks), 1)
-        # A genuine replay keeps the PAD model risk high across the burst; one
-        # noisy frame out of ten is webcam noise, not a spoof.
-        model_spoof_recurring = model_high_count >= 2 and model_high_ratio >= 0.2
-        # Frame-level aggregate risk codes are replaced by the burst-level
-        # equivalents, which vote over reliable frames instead of letting one
-        # frame hard-fail the burst.
-        frame_aggregate_codes = {"PASSIVE_SPOOF_RISK_HIGH", "PAD_MODEL_SPOOF_HIGH"}
+        model_very_high_count = sum(risk >= 0.85 for risk in reliable_model_risks)
+        # A genuine replay keeps the PAD model risk high across MOST of the burst.
+        # A real face under backlight/glasses/phone-camera can spike on a couple of
+        # frames — so require a sustained majority (not just 2 noisy frames) before
+        # the model alone hard-fails, unless the model is very confident (>=0.85).
+        model_spoof_recurring = (
+            (model_high_count >= 3 and model_high_ratio >= 0.4)
+            or model_very_high_count >= 2
+        )
+        # Frame-level aggregate/heuristic codes are replaced by burst-level
+        # equivalents, which vote over reliable frames (with corroboration) instead
+        # of letting one frame hard-fail the burst. Held-phone is included here
+        # because it false-fires on real selfies (glasses/reflections) that have a
+        # LOW model risk; the burst logic below only fails it when corroborated.
+        frame_aggregate_codes = {
+            "PASSIVE_SPOOF_RISK_HIGH",
+            "PAD_MODEL_SPOOF_HIGH",
+            "SELFIE_HELD_PHONE_SCREEN",
+            "SELFIE_POSSIBLE_HELD_PHONE_SCREEN",
+        }
         strong_frame_signals = [
             signal
             for analysis in analyses
@@ -224,7 +238,17 @@ class SelfieAnalyzer:
             burst_signals.append(_signal("SELFIE_BURST_STATIC_REPLAY", "Selfie burst has almost no natural frame-to-frame motion or lighting change.", "high", 0.86))
         if display_like_ratio >= 0.45:
             burst_signals.append(_signal("SELFIE_BURST_DISPLAY_REPLAY", "Display or tablet replay cues recur across the selfie burst.", "high", max(display_like_scores)))
-        if held_phone_count >= 2 or held_phone_ratio >= 0.25:
+        # Held-phone only hard-fails when corroborated — a real phone replay also
+        # keeps the PAD model risk elevated (>=0.5), whereas a real face that trips
+        # the held-phone heuristic keeps a low model risk. Very strong held-phone
+        # evidence (>=0.82) or a display/tablet cue also confirms it.
+        held_phone_recurring = held_phone_count >= 2 or held_phone_ratio >= 0.25
+        held_phone_confirmed = held_phone_recurring and (
+            max_reliable_model_risk >= 0.5
+            or max(held_phone_scores, default=0.0) >= 0.82
+            or display_like_ratio >= 0.45
+        )
+        if held_phone_confirmed:
             burst_signals.append(_signal("SELFIE_BURST_HELD_PHONE_REPLAY", "Held-phone replay cues recur across the selfie burst.", "high", max(held_phone_scores)))
         if small_face_count * 2 > len(analyses):
             burst_signals.append(_signal("SELFIE_BURST_FACE_TOO_SMALL", "You are a bit too far from the camera. Move your face closer until it fills the yellow circle, then capture again.", "high", 0.7))
@@ -244,7 +268,7 @@ class SelfieAnalyzer:
             frame_risk_for_burst,
             0.86 if temporal_checks["selfie_burst_static_replay"] >= 1 else 0.0,
             0.86 if display_like_ratio >= 0.45 else 0.0,
-            0.88 if held_phone_count >= 2 or held_phone_ratio >= 0.25 else 0.0,
+            0.88 if held_phone_confirmed else 0.0,
             model_risk_for_burst,
         )
         hard_fail = any(signal.severity == "high" for signal in burst_signals)
