@@ -1,6 +1,7 @@
 import { Camera, CameraOff, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
+import { analyzeVideoLighting, type LightingStatus } from "../lib/lighting";
 
 interface CameraCaptureProps {
   label: string;
@@ -37,6 +38,7 @@ export function CameraCapture({
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [burstProgress, setBurstProgress] = useState(0);
+  const [lightingStatus, setLightingStatus] = useState<LightingStatus | null>(null);
 
   const startCamera = async () => {
     if (disabled) return;
@@ -67,6 +69,7 @@ export function CameraCapture({
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraReady(false);
+    setLightingStatus(null);
   };
 
   const captureFrame = () => new Promise<Blob | null>((resolve) => {
@@ -119,6 +122,16 @@ export function CameraCapture({
     return () => stopCamera();
   }, []);
 
+  useEffect(() => {
+    if (!cameraReady) return;
+
+    const interval = window.setInterval(() => {
+      setLightingStatus(analyzeVideoLighting(videoRef.current));
+    }, 450);
+
+    return () => window.clearInterval(interval);
+  }, [cameraReady]);
+
   return (
     <section className="camera-shell" aria-label={label}>
       <div className={`camera-frame camera-frame-${overlay}`}>
@@ -128,6 +141,11 @@ export function CameraCapture({
           <div className="camera-empty">
             <CameraOff size={30} />
             <span>Camera is off</span>
+          </div>
+        )}
+        {cameraReady && !capturing && lightingStatus?.level === "warning" && (
+          <div className="camera-lighting-warning" role="status" aria-live="polite">
+            {lightingStatus.message}
           </div>
         )}
       </div>
@@ -149,7 +167,7 @@ export function CameraCapture({
       )}
       {hint && cameraReady && !capturing && (
         <div className="camera-hint" role="note">
-          {hint}
+          {lightingStatus?.level === "warning" ? lightingStatus.message : hint}
         </div>
       )}
     </section>
