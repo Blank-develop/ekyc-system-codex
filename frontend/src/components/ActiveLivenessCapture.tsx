@@ -1,8 +1,9 @@
 import type { FaceMeshConfig, InputMap, NormalizedLandmarkList, Options, Results, ResultsListener } from "@mediapipe/face_mesh";
-import { Camera, CameraOff, Check, ScanFace } from "lucide-react";
+import { Camera, CameraOff, Check, ScanFace, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Challenge } from "../lib/api";
 import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
+import { analyzeVideoLighting, type LightingStatus } from "../lib/lighting";
 
 type FaceMeshInstance = {
   close: () => Promise<void>;
@@ -120,6 +121,8 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
   const [verifyingChallengeId, setVerifyingChallengeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metric, setMetric] = useState<LivenessMetric>(emptyMetric);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [lightingStatus, setLightingStatus] = useState<LightingStatus | null>(null);
 
   const currentChallenge = useMemo(() => challenges.find((challenge) => !challenge.passed), [challenges]);
 
@@ -151,10 +154,12 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
       }
       setModelReady(true);
       setCameraReady(true);
+      setFullscreen(true);
     } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
       setError(cameraErrorMessage(error, faceMeshLoadMessage(error)));
       setCameraReady(false);
+      setFullscreen(false);
     }
   };
 
@@ -166,11 +171,29 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraReady(false);
+    setFullscreen(false);
     setMetric(emptyMetric);
+    setLightingStatus(null);
     modelFailedRef.current = false;
   };
 
   useEffect(() => () => stopCamera(), []);
+
+  useEffect(() => {
+    if (cameraReady && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraReady, fullscreen]);
+
+  useEffect(() => {
+    if (!cameraReady) return;
+
+    const interval = window.setInterval(() => {
+      setLightingStatus(analyzeVideoLighting(videoRef.current));
+    }, 450);
+
+    return () => window.clearInterval(interval);
+  }, [cameraReady]);
 
   useEffect(() => {
     completionLockRef.current = null;
@@ -241,9 +264,38 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
     }, 350);
   }, [challenges, currentChallenge, metric, onComplete]);
 
+  const renderCompactActions = (fullscreenMode = false) => (
+    <div
+      className={`liveness-mobile-action-strip${fullscreenMode ? " active-liveness-fullscreen-actions" : ""}`}
+      aria-label="Active liveness actions"
+    >
+      {challenges.map((challenge) => {
+        const isCurrent = currentChallenge?.id === challenge.id;
+        const isDetected = isCurrent && matchesChallenge(challenge.id, metric);
+        return (
+          <div
+            className={`liveness-detection-card ${challenge.passed ? "passed" : ""} ${isCurrent ? "current" : ""} ${isDetected ? "detected" : ""}`}
+            key={challenge.id}
+          >
+            <span>{challenge.passed ? <Check size={15} /> : challenge.prompt}</span>
+            <small>
+              {challenge.passed
+                ? "Done"
+                : isCurrent
+                  ? verifyingChallengeId === challenge.id
+                    ? "Checking"
+                    : shortDetectionInstruction(challenge.id, modelReady, cameraReady)
+                  : "Next"}
+            </small>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="active-liveness">
-      <div className="liveness-camera camera-frame camera-frame-face">
+      {!fullscreen && <div className="liveness-camera camera-frame camera-frame-face">
         <video ref={videoRef} autoPlay playsInline muted />
         <div className="capture-overlay capture-overlay-face" aria-hidden="true" />
         {!cameraReady && (
@@ -258,7 +310,53 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
             {metric.facePresent ? "Face detected" : "Center your face"}
           </div>
         )}
-      </div>
+        {cameraReady && !verifyingChallengeId && lightingStatus?.level === "warning" && (
+          <div className="camera-lighting-warning" role="status" aria-live="polite">
+            {lightingStatus.message}
+          </div>
+        )}
+        {renderCompactActions()}
+      </div>}
+
+      {fullscreen && (
+        <div className="active-liveness-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen active liveness challenge">
+          <video ref={videoRef} autoPlay playsInline muted />
+          <div className="active-liveness-topbar">
+            <div>
+              <strong>{currentChallenge?.prompt ?? "Active liveness complete"}</strong>
+              <span>
+                {currentChallenge
+                  ? verifyingChallengeId === currentChallenge.id
+                    ? "Checking live burst for screen replay"
+                    : detectionInstruction(currentChallenge.id, modelReady, cameraReady)
+                  : "All actions completed"}
+              </span>
+            </div>
+            <button className="icon-button" type="button" onClick={stopCamera} aria-label="Close active liveness camera">
+              <X size={22} />
+            </button>
+          </div>
+          {cameraReady && (
+            <div className="liveness-status-pill active-liveness-fullscreen-status">
+              <ScanFace size={16} />
+              {metric.facePresent ? "Face detected" : "Center your face"}
+            </div>
+          )}
+          {verifyingChallengeId && (
+            <div className="selfie-loading active-liveness-fullscreen-verifying" role="status" aria-live="polite">
+              <span />
+              Verifying live face
+            </div>
+          )}
+          {error && <p className="form-error active-liveness-fullscreen-error" aria-live="polite">{error}</p>}
+          {!verifyingChallengeId && lightingStatus?.level === "warning" && (
+            <div className="camera-lighting-warning active-liveness-fullscreen-lighting" role="status" aria-live="polite">
+              {lightingStatus.message}
+            </div>
+          )}
+          {renderCompactActions(true)}
+        </div>
+      )}
 
       {error && <p className="form-error" aria-live="polite">{error}</p>}
 
@@ -406,8 +504,10 @@ function readLivenessMetric(landmarks: NormalizedLandmarkList): LivenessMetric {
   return {
     blink: averageEyeRatio < 0.18,
     mouthOpen: mouthRatio > 0.23,
-    turnLeft: yaw < -0.08,
-    turnRight: yaw > 0.08,
+    // Lowered from ±0.08 so a smaller, more natural head turn registers as
+    // quickly as a blink or open mouth (0.08 needed a large ~15-20 deg turn).
+    turnLeft: yaw < -0.05,
+    turnRight: yaw > 0.05,
     facePresent: true,
     yaw,
     eyeRatio: averageEyeRatio,
@@ -439,4 +539,14 @@ function detectionInstruction(challengeId: string, modelReady: boolean, cameraRe
   if (challengeId === "turn_left") return "Turn your head left to auto-pass";
   if (challengeId === "turn_right") return "Turn your head right to auto-pass";
   return "Perform the requested action";
+}
+
+function shortDetectionInstruction(challengeId: string, modelReady: boolean, cameraReady: boolean) {
+  if (!cameraReady) return "Open camera";
+  if (!modelReady) return "Loading";
+  if (challengeId === "blink") return "Blink";
+  if (challengeId === "open_mouth") return "Open mouth";
+  if (challengeId === "turn_left") return "Turn left";
+  if (challengeId === "turn_right") return "Turn right";
+  return "Do action";
 }

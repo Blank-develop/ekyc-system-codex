@@ -188,6 +188,32 @@ def _has_strong_active_replay_evidence(checks: dict[str, object], risk: float) -
     )
 
 
+def _face_login_hard_replay(signals: list[FraudSignal], risk: float) -> bool:
+    hard_codes = {
+        "SELFIE_PHONE_SCREEN_FRAME",
+        "SELFIE_HELD_PHONE_SCREEN",
+        "SELFIE_TABLET_SCREEN_SURFACE",
+        "SELFIE_PRINTED_PHOTO_PAPER",
+    }
+    signal_codes = {signal.code for signal in signals if signal.severity == "high"}
+    return bool(signal_codes & hard_codes) or risk >= 0.88
+
+
+def _face_login_live_candidate(passive: PassiveSpoofResult) -> bool:
+    """Face login uses a burst; do not let PAD model noise alone block matching."""
+    if _face_login_hard_replay(passive.signals, passive.risk):
+        return False
+    checks = passive.checks
+    heuristic_risk = float(checks.get("passive_spoof_heuristic_risk") or passive.risk)
+    return (
+        heuristic_risk < 0.62
+        and float(checks.get("passive_spoof_screen_frame_score") or 0.0) < 0.62
+        and float(checks.get("passive_spoof_display_surface_score") or 0.0) < 0.58
+        and float(checks.get("passive_spoof_held_phone_score") or 0.0) < 0.52
+        and float(checks.get("passive_spoof_paper_photo_score") or 0.0) < 0.56
+    )
+
+
 def active_liveness_quality_spoof_signals(
     face_width_ratios: list[float],
     model_risks: list[float],
@@ -210,9 +236,7 @@ def active_liveness_quality_spoof_signals(
 
     signals: list[FraudSignal] = []
     if frame_count and small_face_count * 2 > frame_count:
-        signals.append(_signal("ACTIVE_LIVENESS_FACE_TOO_SMALL", "You are a bit too far from the camera; move your face closer until it fills the oval, then repeat the action.", "high", 0.7))
-    if model_spoof_recurring:
-        signals.append(_signal("ACTIVE_LIVENESS_MODEL_SPOOF_HIGH", "Anti-spoofing model detected recurring screen/photo spoof risk during active liveness.", "high", max(reliable_model_risks, default=0.0)))
+        signals.append(_signal("ACTIVE_LIVENESS_FACE_TOO_SMALL", "You are a bit too far from the camera; move closer and repeat the action.", "high", 0.7))
 
     diagnostics = {
         "active_liveness_model_high_count": model_high_count,
@@ -743,32 +767,88 @@ async def admin_overview() -> AdminOverviewResponse:
 
 
 @router.post("/face-login", response_model=FaceLoginResponse, dependencies=[Depends(face_login_rate_limit)])
-async def face_login(request: Request, file: UploadFile = File(...)) -> FaceLoginResponse:
+async def face_login(
+    request: Request,
+    file: UploadFile | None = File(default=None),
+    frames: list[UploadFile] | None = File(default=None),
+) -> FaceLoginResponse:
     started_at = time.perf_counter()
-    content = await _read_upload(file)
+    login_files = frames or ([file] if file else [])
+    if not login_files:
+        raise HTTPException(status_code=400, detail="At least one face login frame is required.")
+    login_files = login_files[:6]
+    contents = [await _read_upload(item) for item in login_files]
+
     face_started_at = time.perf_counter()
-    face_result = await run_in_threadpool(face_recognizer.extract, content, "login")
+    face_results = [
+        await run_in_threadpool(face_recognizer.extract, content, "login")
+        for content in contents
+    ]
     face_elapsed_ms = round((time.perf_counter() - face_started_at) * 1000, 2)
-    passive_result = None
+
+    representative_index, face_result = max(
+        enumerate(face_results),
+        key=lambda item: item[1].face_confidence or 0,
+    )
+    usable_face_count = sum(1 for result in face_results if result.embedding is not None)
+    max_face_count = max(int(result.checks.get("login_face_count") or 0) for result in face_results)
+
+    passive_results = []
     passive_elapsed_ms = 0.0
     signals = [*face_result.signals]
     reason_codes: list[str] = []
 
-    if face_result.embedding is None:
+    if usable_face_count == 0:
         reason_codes.append("FACE_LOGIN_FACE_NOT_FOUND")
     if face_result.face_confidence and face_result.face_confidence < 0.82:
         reason_codes.append("FACE_LOGIN_FACE_CONFIDENCE_LOW")
         signals.append(_signal("FACE_LOGIN_FACE_CONFIDENCE_LOW", "Login face confidence is too low.", "high", 0.86))
-    if int(face_result.checks.get("login_face_count") or 0) > 1:
+    if max_face_count > 1:
         reason_codes.append("FACE_LOGIN_MULTIPLE_FACES")
         signals.append(_signal("FACE_LOGIN_MULTIPLE_FACES", "Multiple faces detected during face login.", "high", 0.86))
     if not reason_codes:
         passive_started_at = time.perf_counter()
-        passive_result = await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, face_result.face_box)
+        passive_results = [
+            await run_in_threadpool(selfie_analyzer.passive_spoof.analyze, content, frame_face.face_box)
+            for content, frame_face in zip(contents, face_results, strict=False)
+        ]
         passive_elapsed_ms = round((time.perf_counter() - passive_started_at) * 1000, 2)
-        signals.extend(passive_result.signals)
-        if not passive_result.passed or passive_result.risk > settings.max_passive_liveness_risk:
+
+        hard_replay_count = sum(1 for result in passive_results if _face_login_hard_replay(result.signals, result.risk))
+        live_candidates = [
+            (index, frame_face, passive)
+            for index, (frame_face, passive) in enumerate(zip(face_results, passive_results, strict=False))
+            if (
+                frame_face.embedding is not None
+                and (frame_face.face_confidence or 0) >= 0.82
+                and int(frame_face.checks.get("login_face_count") or 0) <= 1
+                and _face_login_live_candidate(passive)
+            )
+        ]
+
+        if passive_results and hard_replay_count * 2 > len(passive_results):
             reason_codes.append("FACE_LOGIN_LIVENESS_FAILED")
+            representative_index, face_result, passive_result = max(
+                [(index, face, passive) for index, (face, passive) in enumerate(zip(face_results, passive_results, strict=False))],
+                key=lambda item: item[2].risk,
+            )
+            signals = [*face_result.signals, *passive_result.signals]
+        elif live_candidates:
+            representative_index, face_result, passive_result = min(
+                live_candidates,
+                key=lambda item: (item[2].risk, -(item[1].face_confidence or 0)),
+            )
+            signals = [*face_result.signals, *[signal for signal in passive_result.signals if signal.severity == "high"]]
+        else:
+            reason_codes.append("FACE_LOGIN_LIVENESS_FAILED")
+            representative_index, face_result, passive_result = min(
+                [(index, face, passive) for index, (face, passive) in enumerate(zip(face_results, passive_results, strict=False))],
+                key=lambda item: (item[2].risk, -(item[1].face_confidence or 0)),
+            )
+            signals = [*face_result.signals, *passive_result.signals]
+    else:
+        passive_result = None
+
     for signal in signals:
         if signal.severity == "high" and signal.code not in reason_codes:
             reason_codes.append(signal.code)
@@ -807,6 +887,9 @@ async def face_login(request: Request, file: UploadFile = File(...)) -> FaceLogi
         profile=profile,
         checks={
             "face_login_match_threshold": settings.face_login_match_threshold,
+            "face_login_upload_frame_count": len(contents),
+            "face_login_burst_mode": len(contents) > 1,
+            "face_login_representative_frame": representative_index,
             "face_login_total_ms": round((time.perf_counter() - started_at) * 1000, 2),
             "face_login_face_extract_ms": face_elapsed_ms,
             "face_login_passive_liveness_ms": passive_elapsed_ms,

@@ -491,3 +491,43 @@ def _context_stub():
     loaded = PassportFraudAnalyzer().loader.load(_jpeg_bytes(image), "stub.jpg")
     assert not hasattr(loaded, "status")
     return loaded
+
+
+def test_mrz_name_extraction_survives_filler_letters_and_doubled_type() -> None:
+    # OCR renders MRZ "<" filler as repeated letters (K/S) and sometimes doubles
+    # the leading type character; names must still come out clean.
+    cases = [
+        ("POLAOSAYPADITH<<SAVATH" + "<" * 22, "SAYPADITH", "SAVATH"),
+        ("POLAOSAYPADITH<<SAVATH" + "K" * 22, "SAYPADITH", "SAVATH"),
+        ("POLAOSAYPADITHS<SAVATHS" + "KKKKKSKKKKKKSKKKKKKS"[:21], "SAYPADITH", "SAVATH"),
+        ("PPOLAOSOUKSOMBATH<<VILAYPHONK<<<KKKKEKKKKKK", "SOUKSOMBATH", "VILAYPHON"),
+        # tail read correctly as "<" but fillers touching the names became "S"
+        ("POLAOSAYPADITHS<SAVATHS" + "<<S<<<<<<<<<S<<<<<<<<"[:21], "SAYPADITH", "SAVATH"),
+        ("POLAOSAYPADITHS<<SAVATHS" + "<S<<<<<<<<<<<<<<<<<<"[:20], "SAYPADITH", "SAVATH"),
+        # genuine multi-part given names must never be clipped
+        ("P<IDNWAHYU<<DENI<SETIA" + "<" * 22, "WAHYU", "DENI SETIA"),
+    ]
+    for line1, expected_surname, expected_given in cases:
+        realigned = MrzAnalyzer._realign_td3_line1((line1 + "<" * 44)[:44])
+        surname, given = MrzAnalyzer._extract_mrz_names(realigned)
+        assert surname == expected_surname, line1
+        assert given == expected_given, line1
+
+
+def test_mrz_check_digit_guided_repair_of_misread_digit() -> None:
+    # Expiry "350604" OCR-read as "S50604": the default S->5 mapping fails the
+    # check digit, S->3 passes, so the parser must adopt 3 (and stay valid)
+    # instead of reporting a check-digit mismatch on a genuine passport.
+    mrz = "\n".join(
+        [
+            "POLAOSENGVILAY<<KHATTHAPHONE<<<<<<<<<<<<<<<<",
+            "PA04999747LAO9BO331BNS5O6O42<<<<<<<<<<<<<<<2",
+        ]
+    )
+    result = MrzAnalyzer().analyze(_context_stub(), ocr_text=mrz)
+
+    assert result.mrz_valid is True
+    assert result.mrz_check_digits_valid is True
+    assert str(result.expiry_date) == "2035-06-04"
+    assert str(result.date_of_birth) == "1998-03-31"
+    assert result.extracted_fields.get("sex") == "M"

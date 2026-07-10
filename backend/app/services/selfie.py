@@ -53,12 +53,34 @@ class SelfieAnalyzer:
         width, height = image.size
         pixels = width * height
         gray = ImageOps.grayscale(image)
-        stat = ImageStat.Stat(gray)
-        brightness = stat.mean[0]
-        contrast = stat.stddev[0]
+        frame_stat = ImageStat.Stat(gray)
+        frame_brightness = frame_stat.mean[0]
         sharpness = ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES)).mean[0]
         center_skin_ratio = self._center_skin_ratio(image)
-        glare_ratio = self._glare_ratio(image)
+
+        # Detect the face first. In dark/backlit captures the detector often
+        # misses the face, so when the first pass fails (or the frame is
+        # under-exposed) we retry on an illumination-normalized copy. That copy
+        # only changes intensity/colour, not geometry, so the returned box stays
+        # valid for the original image (used below for PAD and face metering),
+        # while the rescued embedding is measured off the better-lit face.
+        face_result = self.face_recognizer.extract(content, "selfie")
+        embedding_source = "original"
+        if face_result.face_box is None or face_result.embedding is None or frame_brightness < 90:
+            rescued = self.face_recognizer.extract(self._encode_jpeg(self._normalize_illumination(image)), "selfie")
+            box_a, box_b = face_result.face_box, rescued.face_box
+            improved = (
+                (box_a is None and box_b is not None)
+                or (face_result.embedding is None and rescued.embedding is not None)
+                or (box_a is not None and box_b is not None and box_b[2] * box_b[3] > box_a[2] * box_a[3] * 1.05)
+            )
+            if improved:
+                face_result = rescued
+                embedding_source = "illumination_normalized"
+        signals.extend(face_result.signals)
+
+        # #1 Face-region metering: measure lighting on the face, not the frame.
+        brightness, contrast, glare_ratio = self._face_region_metrics(image, gray, face_result.face_box)
 
         quality = 0.24
         quality += 0.2 if pixels >= 450_000 else 0.08 if pixels >= 220_000 else 0.0
@@ -73,6 +95,8 @@ class SelfieAnalyzer:
             signals.append(_signal("SELFIE_LOW_RESOLUTION", "Selfie resolution is too low.", "high", 0.76))
         if brightness < 45 or brightness > 235:
             signals.append(_signal("SELFIE_POOR_LIGHTING", "Selfie lighting is too dark or overexposed.", "medium", 0.5))
+        elif face_result.face_box is not None and brightness < 80 and (frame_brightness - brightness) > 45:
+            signals.append(_signal("SELFIE_FACE_UNDEREXPOSED", "Your face is in shadow or backlit. Face a light source and keep bright windows or lamps out of the background.", "medium", 0.4))
         if contrast < 16:
             signals.append(_signal("SELFIE_LOW_CONTRAST", "Selfie contrast is too low for reliable analysis.", "medium", 0.42))
         if sharpness < 1.4:
@@ -85,9 +109,6 @@ class SelfieAnalyzer:
             signals.append(_signal("FACE_CENTER_WEAK", "Face appears weak or off-center.", "medium", 0.36))
         if glare_ratio > 0.18:
             signals.append(_signal("SELFIE_GLARE_OR_SCREEN_RISK", "Strong glare may indicate a screen replay or poor capture.", "medium", 0.48))
-
-        face_result = self.face_recognizer.extract(content, "selfie")
-        signals.extend(face_result.signals)
 
         face_width_ratio = 0.0
         if face_result.face_box and width:
@@ -142,6 +163,8 @@ class SelfieAnalyzer:
                 "height": height,
                 "megapixels": round(pixels / 1_000_000, 2),
                 "brightness": round(brightness, 2),
+                "frame_brightness": round(frame_brightness, 2),
+                "selfie_embedding_source": embedding_source,
                 "contrast": round(contrast, 2),
                 "sharpness": round(sharpness, 2),
                 "center_skin_ratio": round(center_skin_ratio, 4),
@@ -392,3 +415,57 @@ class SelfieAnalyzer:
             if val >= 245 and sat <= 32:
                 glare += 1
         return glare / max(total, 1)
+
+    @staticmethod
+    def _face_region_metrics(
+        image: Image.Image, gray: Image.Image, face_box: tuple[int, int, int, int] | None
+    ) -> tuple[float, float, float]:
+        """Brightness, contrast and glare metered on the face crop, not the whole
+        frame. A bright window behind a dark face (backlit) reads "fine"
+        frame-wide but fails the face -- this measures what actually matters.
+        Falls back to whole-frame metrics when no face box is available."""
+        if face_box is None:
+            stat = ImageStat.Stat(gray)
+            return stat.mean[0], stat.stddev[0], SelfieAnalyzer._glare_ratio(image)
+        x, y, w, h = face_box
+        pad_x, pad_y = int(w * 0.1), int(h * 0.1)
+        left, top = max(0, x - pad_x), max(0, y - pad_y)
+        right, bottom = min(image.width, x + w + pad_x), min(image.height, y + h + pad_y)
+        if right <= left or bottom <= top:
+            stat = ImageStat.Stat(gray)
+            return stat.mean[0], stat.stddev[0], SelfieAnalyzer._glare_ratio(image)
+        face_gray = gray.crop((left, top, right, bottom))
+        stat = ImageStat.Stat(face_gray)
+        return stat.mean[0], stat.stddev[0], SelfieAnalyzer._glare_ratio(image.crop((left, top, right, bottom)))
+
+    @staticmethod
+    def _normalize_illumination(image: Image.Image) -> Image.Image:
+        """Illumination normalization for low-light / colour-cast rescue:
+        gray-world white balance + CLAHE on luminance + a gamma pull toward
+        mid-tone. Near-identity for a well-exposed frame, so it only meaningfully
+        changes the dark/backlit captures it is meant to rescue."""
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return ImageOps.autocontrast(image.convert("RGB"))
+        arr = np.asarray(image.convert("RGB")).astype(np.float32)
+        channel_means = arr.reshape(-1, 3).mean(axis=0)
+        gray_mean = float(channel_means.mean())
+        balanced = np.clip(arr * (gray_mean / np.clip(channel_means, 1.0, None)), 0, 255).astype(np.uint8)
+        lab = cv2.cvtColor(balanced, cv2.COLOR_RGB2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        l_channel = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_channel)
+        out = cv2.cvtColor(cv2.merge((l_channel, a_channel, b_channel)), cv2.COLOR_LAB2RGB)
+        mean_l = float(l_channel.mean()) / 255.0
+        if 0.02 < mean_l < 0.95:
+            exponent = float(np.clip(np.log(0.5) / np.log(mean_l), 0.45, 2.2))
+            lut = (np.clip((np.arange(256) / 255.0) ** exponent, 0, 1) * 255).astype(np.uint8)
+            out = lut[out]
+        return Image.fromarray(out)
+
+    @staticmethod
+    def _encode_jpeg(image: Image.Image) -> bytes:
+        buffer = BytesIO()
+        image.convert("RGB").save(buffer, format="JPEG", quality=92)
+        return buffer.getvalue()
