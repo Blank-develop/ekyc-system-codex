@@ -39,6 +39,7 @@ export function CameraCapture({
   const [capturing, setCapturing] = useState(false);
   const [burstProgress, setBurstProgress] = useState(0);
   const [lightingStatus, setLightingStatus] = useState<LightingStatus | null>(null);
+  const [lightingOverride, setLightingOverride] = useState(false);
 
   const startCamera = async () => {
     if (disabled) return;
@@ -70,6 +71,7 @@ export function CameraCapture({
     streamRef.current = null;
     setCameraReady(false);
     setLightingStatus(null);
+    setLightingOverride(false);
   };
 
   const captureFrame = () => new Promise<Blob | null>((resolve) => {
@@ -126,11 +128,16 @@ export function CameraCapture({
     if (!cameraReady) return;
 
     const interval = window.setInterval(() => {
-      setLightingStatus(analyzeVideoLighting(videoRef.current));
+      const status = analyzeVideoLighting(videoRef.current);
+      setLightingStatus(status);
+      // Once lighting recovers, re-arm the gate so a later bad spell blocks again.
+      if (status && status.level === "good") setLightingOverride(false);
     }, 450);
 
     return () => window.clearInterval(interval);
   }, [cameraReady]);
+
+  const lightingBlocked = cameraReady && !capturing && lightingStatus?.level === "warning" && !lightingOverride;
 
   return (
     <section className="camera-shell" aria-label={label}>
@@ -155,11 +162,16 @@ export function CameraCapture({
           {cameraReady ? <CameraOff size={18} /> : <Camera size={18} />}
           {cameraReady ? "Stop camera" : "Open camera"}
         </button>
-        <button className="primary-button" type="button" onClick={capture} disabled={disabled || !cameraReady || capturing}>
+        <button className="primary-button" type="button" onClick={capture} disabled={disabled || !cameraReady || capturing || lightingBlocked}>
           <RefreshCw size={18} />
-          {capturing ? `Capturing ${burstProgress}/${burstCount}` : captureLabel}
+          {capturing ? `Capturing ${burstProgress}/${burstCount}` : lightingBlocked ? "Fix lighting to capture" : captureLabel}
         </button>
       </div>
+      {lightingBlocked && (
+        <button className="camera-capture-anyway" type="button" onClick={() => setLightingOverride(true)}>
+          Capture anyway
+        </button>
+      )}
       {capturing && (
         <div className="camera-burst-status" role="status" aria-live="polite">
           Keep your face live and steady while Kyron captures a short burst.

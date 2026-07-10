@@ -291,10 +291,10 @@ class VerificationStore:
         if not payload.passed or signals:
             return False
         return (
-            cls._active_check(checks, "active_liveness_screen_frame_score") <= 0.18
-            and cls._active_check(checks, "active_liveness_display_surface_score") <= 0.55
-            and cls._active_check(checks, "active_liveness_paper_photo_score") <= 0.28
-            and cls._active_check(checks, "active_liveness_heuristic_spoof_risk") <= 0.35
+            cls._active_check(checks, "active_liveness_screen_frame_score") <= 0.24
+            and cls._active_check(checks, "active_liveness_display_surface_score") <= 0.6
+            and cls._active_check(checks, "active_liveness_paper_photo_score") <= 0.34
+            and cls._active_check(checks, "active_liveness_heuristic_spoof_risk") <= 0.44
         )
 
     def set_selfie(self, session_id: UUID, payload: SelfieAnalysisRequest) -> VerificationResult:

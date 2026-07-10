@@ -441,11 +441,11 @@ export function App() {
     }
   };
 
-  const faceLogin = async (blob: Blob) => {
+  const faceLogin = async (capture: Blob | Blob[]) => {
     try {
       setFaceLoginBusy(true);
       setFaceLoginResult(null);
-      const response = await api.faceLogin(blob);
+      const response = await api.faceLogin(capture);
       setFaceLoginResult(response);
     } catch (err) {
       setFaceLoginResult({
@@ -861,7 +861,7 @@ function FaceLoginScreen({
 }: {
   busy: boolean;
   result: FaceLoginResponse | null;
-  onCapture: (blob: Blob) => void;
+  onCapture: (capture: Blob | Blob[]) => void;
   onBack: () => void;
 }) {
   const passed = result?.decision === "passed";
@@ -912,8 +912,12 @@ function FaceLoginScreen({
           label="Returning user face login"
           overlay="face"
           onCapture={onCapture}
+          onCaptureFrames={onCapture}
           maxCaptureWidth={720}
           jpegQuality={0.84}
+          burstCount={6}
+          burstIntervalMs={220}
+          captureLabel="Capture live burst"
         />
       </section>
     </main>

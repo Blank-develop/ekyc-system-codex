@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -197,6 +198,12 @@ class OcrTextExtractor:
         rotated_90 = image.rotate(90, expand=True)
         rotated_270 = image.rotate(270, expand=True)
         return [
+            # Upright passports: the MRZ is the bottom band. These were missing,
+            # so upright captures previously only reached the milder general OCR.
+            ("mrz_bottom_22", image.crop((0, int(height * 0.78), width, height)), 6),
+            ("mrz_bottom_22_sparse", image.crop((0, int(height * 0.78), width, height)), 11),
+            ("mrz_bottom_30", image.crop((0, int(height * 0.70), width, height)), 6),
+            # Rotated captures (MRZ along a vertical edge).
             ("mrz_right_65_rot270", image.crop((int(width * 0.65), 0, width, height)).rotate(270, expand=True), 6),
             ("mrz_right_65_rot270_sparse", image.crop((int(width * 0.65), 0, width, height)).rotate(270, expand=True), 11),
             ("mrz_rot270_bottom_30", rotated_270.crop((0, int(rotated_270.height * 0.70), rotated_270.width, rotated_270.height)), 6),
@@ -205,19 +212,60 @@ class OcrTextExtractor:
         ]
 
     @staticmethod
+    def _normalize_ocr_gray(gray: Image.Image) -> Image.Image:
+        """Illumination normalization for OCR: CLAHE evens out shadows/uneven
+        lighting across a document photo, and a gamma pull toward mid-tone
+        rescues dark or washed-out captures. Falls back to global autocontrast
+        when OpenCV is unavailable. Near-identity for an evenly-lit scan."""
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return ImageOps.autocontrast(gray)
+        source = np.asarray(gray)
+        mean = float(source.mean()) / 255.0
+        # Only rescue genuinely dark or washed-out captures. A well-exposed
+        # document stays on the original autocontrast path -- CLAHE can otherwise
+        # alter already-crisp MRZ glyphs (e.g. read "P" as "M") and break a check
+        # digit, so we must not touch images that don't need help.
+        if 0.20 <= mean <= 0.80:
+            return ImageOps.autocontrast(gray)
+        array = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(source)
+        if 0.02 < mean < 0.98:
+            exponent = float(np.clip(np.log(0.5) / np.log(mean), 0.5, 2.0))
+            lut = (np.clip((np.arange(256) / 255.0) ** exponent, 0, 1) * 255).astype(np.uint8)
+            array = lut[array]
+        return Image.fromarray(array)
+
+    @staticmethod
     def _prepare_for_ocr(image: Image.Image) -> Image.Image:
         gray = ImageOps.grayscale(image)
         longest_side = max(gray.size)
         if longest_side < 1800:
             scale = math.ceil(1800 / longest_side)
             gray = gray.resize((gray.width * scale, gray.height * scale), Image.Resampling.LANCZOS)
-        gray = ImageOps.autocontrast(gray)
+        gray = OcrTextExtractor._normalize_ocr_gray(gray)
         gray = gray.filter(ImageFilter.SHARPEN)
         return gray
 
     @staticmethod
     def _prepare_for_mrz_ocr(image: Image.Image) -> Image.Image:
-        gray = OcrTextExtractor._prepare_for_ocr(image)
+        gray = ImageOps.grayscale(image)
+        # MRZ glyphs in these captures are tiny (median image ~726px wide, so a
+        # TD3 character is only ~6-10px tall -- near Tesseract's readability
+        # floor). Upscale the crop aggressively with a smooth fractional LANCZOS
+        # resize (vs the general OCR path's coarse integer scale to 1800px) so
+        # character strokes are large enough to recognise.
+        longest = max(gray.size)
+        target = 2600
+        if 0 < longest < target:
+            scale = min(target / longest, 4.0)
+            gray = gray.resize(
+                (max(1, round(gray.width * scale)), max(1, round(gray.height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        gray = OcrTextExtractor._normalize_ocr_gray(gray)
+        gray = gray.filter(ImageFilter.SHARPEN)
         try:
             import cv2
             import numpy as np
@@ -492,6 +540,14 @@ class MrzAnalyzer:
     def analyze(self, context: FraudContext, ocr_text: str | None = None) -> OcrResult:
         lines = self._candidate_lines(ocr_text or "")
         selected = self._select_td3_pair(lines)
+        if os.environ.get("LALIGENCE_DEBUG_OCR"):
+            # Local debugging only: dump the raw OCR text, candidate lines and
+            # the selected TD3 pair so misreads can be reproduced offline.
+            # Contains document PII -- never enable outside a private dev box.
+            with open("/tmp/kyron_ocr_debug.txt", "w", encoding="utf-8") as handle:
+                handle.write("RAW OCR TEXT:\n" + (ocr_text or "") + "\n\nCANDIDATE LINES:\n")
+                handle.writelines(line + "\n" for line in lines)
+                handle.write("\nSELECTED:\n" + (f"{selected[0]}\n{selected[1]}" if selected else "None") + "\n")
         if selected is None:
             evidence_score = self._passport_text_evidence_score(ocr_text or "")
             context.checks["passport_text_evidence_score"] = round(evidence_score, 3)
@@ -643,11 +699,161 @@ class MrzAnalyzer:
             return f"{candidate}{filler}{optional_check}{composite}"
         return None
 
+    @staticmethod
+    def _filler_letters(line1: str) -> set[str]:
+        """The letters an OCR engine is substituting for MRZ filler "<" in this
+        image. Two independent cues on TD3 line 1's filler zone:
+        - a letter repeating heavily (>=3x) in the deep tail, when the whole run
+          was misread (e.g. "KKKKKKSSSS" instead of "<<<<<<<<<<");
+        - short letter "islands" (1-2 chars) stranded between "<" characters
+          (e.g. "<<S<<<S<"), when only some fillers were misread -- a genuine
+          name token never floats alone inside the filler run.
+        Empty for a cleanly-read line."""
+        letters: set[str] = set()
+        counts: dict[str, int] = {}
+        for ch in line1[24:44]:
+            if "A" <= ch <= "Z":
+                counts[ch] = counts.get(ch, 0) + 1
+        letters.update(letter for letter, n in counts.items() if n >= 3)
+        # Require "<<" on at least one side: genuine short name parts sit between
+        # single "<" separators, filler islands sit inside "<" runs.
+        for island in re.finditer(r"(?<=<<)([A-Z]{1,2})(?=<)|(?<=<)([A-Z]{1,2})(?=<<)", line1[5:44]):
+            letters.update(island.group(1) or island.group(2))
+        return letters
+
+    @staticmethod
+    def _extract_mrz_names(line1: str, nationality: str | None = None) -> tuple[str, str]:
+        """Extract surname and given names from TD3 line 1, robust to OCR that
+        renders the "<" filler as letters. Filler-substitute letters come in two
+        confidence tiers:
+        - STRONG (may clip a name's trailing letter): the single dominant tail
+          letter, island letters stranded inside "<" runs, and letters absorbed
+          from inside filler runs -- each is direct evidence of substitution.
+        - WEAK (collapse runs only, never touch a name): tail letters without
+          clear dominance, e.g. an E that shows up in mixed tail garbage must
+          not eat the genuine E ending "KHATTHAPHONE"."""
+        # Anchor the name-field start. Normally position 5 (after "P", the type
+        # and the 3-letter country), but OCR can eat prefix characters and shift
+        # the names left ("POLAOSENGVILAY" read as "P<AOSENGVILAY" would lose
+        # the S). Line 2's nationality is the same code as the line-1 issuer,
+        # so use it to locate the true boundary.
+        start = 5
+        if nationality:
+            found = line1.find(nationality, 1, 8)
+            if found != -1:
+                start = found + 3
+            elif line1[2:5] != nationality and line1[2:4] == nationality[1:]:
+                start = 4
+        field = line1[start:44]
+
+        counts: dict[str, int] = {}
+        for ch in line1[24:44]:
+            if "A" <= ch <= "Z":
+                counts[ch] = counts.get(ch, 0) + 1
+        tail_letters = {letter for letter, n in counts.items() if n >= 3}
+        strong: set[str] = set()
+        if tail_letters:
+            ranked = sorted(tail_letters, key=lambda letter: counts[letter], reverse=True)
+            if len(ranked) == 1 or counts[ranked[0]] > counts[ranked[1]]:
+                strong.add(ranked[0])
+        # Island letters stranded inside "<" runs (genuine short name parts sit
+        # between single "<" separators, so require "<<" on one side).
+        for island in re.finditer(r"(?<=<<)([A-Z]{1,2})(?=<)|(?<=<)([A-Z]{1,2})(?=<<)", field):
+            strong.update(island.group(1) or island.group(2))
+        fillers = tail_letters | strong
+
+        if fillers:
+            # Iteratively clean the field, growing the filler set as we go:
+            # - ABSORB: a new letter trapped inside a filler run ("KKKSKKK", or
+            #   "KKKS" at field end) is itself a misread filler; learning it as
+            #   STRONG lets its siblings bled onto the names fall too.
+            # - DISSOLVE: a strong filler letter followed by "<" or another
+            #   filler is a misread "<" ("SAYPADITHS<" -> "SAYPADITH<<"); the
+            #   genuine first letter of a name after the separator, and weak
+            #   fillers ending a real name, are never touched.
+            for _ in range(6):
+                all_class = "[" + re.escape("".join(sorted(fillers))) + "]"
+
+                def absorb(match: re.Match[str]) -> str:
+                    letter = match.group(1)
+                    # Promote to STRONG only on unambiguous evidence: the letter
+                    # is sandwiched by DIFFERENT filler characters ("KSK", or
+                    # "KS" at field end). A letter run of itself in tail garbage
+                    # ("KEEE") is absorbed but stays weak, so it can never clip
+                    # a genuine name ending in that letter.
+                    source = match.string
+                    left = source[match.start(1) - 1]
+                    right = source[match.end(1)] if match.end(1) < len(source) else "<"
+                    if left != letter and (right == "<" or right != letter):
+                        strong.add(letter)
+                        fillers.add(letter)
+                    return "<"
+
+                absorbed = re.sub(f"(?<={all_class})([A-Z])(?={all_class}|<|$)", absorb, field)
+                dissolved = absorbed
+                if strong:
+                    strong_class = "[" + re.escape("".join(sorted(strong))) + "]"
+                    all_class = "[" + re.escape("".join(sorted(fillers))) + "]"
+                    dissolved = re.sub(f"{strong_class}(?={all_class}|<)", "<", absorbed)
+                if dissolved == field:
+                    break
+                field = dissolved
+            field = re.sub("[" + re.escape("".join(sorted(fillers))) + "]{2,}", "<<", field)
+        parts = field.split("<<", 1)
+        # When OCR ate half of the "<<" separator ("SAYPADITH<<SAVATH" read as
+        # "SAYPADITHS<SAVATHS"), everything lands in the surname part and the
+        # given name comes out empty. A TD3 line always has both components, so
+        # fall back to treating the first single "<" as the separator.
+        if fillers and (len(parts) == 1 or not parts[1].strip("<")) and "<" in parts[0].strip("<"):
+            parts = parts[0].split("<", 1)
+        surname = MrzAnalyzer._clean_name_segment(parts[0])
+        # Collapsing filler runs can leave stray "<" at the head of the given
+        # segment; a genuine segment never starts with "<", so strip them or the
+        # cleaner would treat the whole segment as filler and return nothing.
+        given = MrzAnalyzer._clean_name_segment(parts[1].lstrip("<")) if len(parts) > 1 else ""
+        if fillers:
+
+            def _drop_pure_filler(name: str) -> str:
+                return " ".join(tok for tok in name.split(" ") if tok and not all(ch in fillers for ch in tok))
+
+            surname = _drop_pure_filler(surname)
+            given = _drop_pure_filler(given)
+        return surname, given
+
+    @staticmethod
+    def _realign_td3_line1(line1: str) -> str:
+        """Undo a spurious doubled leading type character.
+
+        OCR sometimes reads the line-1 prefix "POLAO..." as "PPOLAO...", which
+        shifts the 3-letter issuing country and every name character one place to
+        the right (surname "CHANTHABANDITH" -> "OCHANTHABANDITH"). "PP" is not a
+        valid TD3 document type, so when the second character repeats the "P"
+        marker and dropping it yields a clean "P" + subtype + 3-letter country,
+        we realign. Line 1 carries no check digit, so this positional cue is the
+        only self-correction available for the name field."""
+        if len(line1) >= 6 and line1[1] == "P":
+            shifted = (line1[1:] + "<")[:44]
+            if shifted[1] != "P" and shifted[2:5].isalpha():
+                return shifted
+        return line1
+
     def _select_td3_pair(self, lines: list[str]) -> tuple[str, str, dict[str, Any]] | None:
         best: tuple[float, int, int, str, str, dict[str, Any]] | None = None
         for line1_index, line1 in enumerate(lines):
-            if not (line1.startswith("P<") and "<<" in line1):
+            # ICAO TD3 line 1 is "P" + a type subcategory + 3-letter issuing
+            # country + names. The subcategory may be "<" OR a national subtype
+            # letter (e.g. Lao passports use "PO", diplomatic "PD", service
+            # "PS"). Requiring "P<" wrongly rejected every two-letter-type
+            # passport before its check digits were ever evaluated. The name line
+            # is alphabetic, so a digit-count guard still separates it from the
+            # digit-heavy data line (whose positions 1+ are the document number).
+            if not line1 or line1[0] != "P" or "<<" not in line1:
                 continue
+            if not (line1[1] == "<" or "A" <= line1[1] <= "Z"):
+                continue
+            if sum(ch.isdigit() for ch in line1) > 5:
+                continue
+            line1 = self._realign_td3_line1(line1)
             for line2_index, line2 in enumerate(lines):
                 if line1_index == line2_index:
                     continue
@@ -660,6 +866,11 @@ class MrzAnalyzer:
                 score += 0.4 if line2_index > line1_index else 0.0
                 score += max(0.0, 1.0 - abs((line2_index - line1_index) - 1) * 0.18)
                 score += min(len(str(parsed.get("full_name") or "")) / 5.0, 5.0)
+                # Prefer cleanly-read lines: a candidate whose filler zone is
+                # littered with misread letters is less trustworthy, and its
+                # junk can inflate the name-length bonus (a bled "S" makes the
+                # name longer, outscoring the clean read of the same passport).
+                score -= 0.75 * len(self._filler_letters(line1))
                 candidate = (score, line1_index, line2_index, line1, line2, parsed)
                 if best is None or candidate > best:
                     best = candidate
@@ -704,9 +915,16 @@ class MrzAnalyzer:
             optional_check_valid if optional_check_valid is not None else True,
             composite_check_valid if composite_check_valid is not None else True,
         ]
-        names = line1[5:44].split("<<", 1)
-        surname = self._clean_name_segment(names[0])
-        given = self._clean_name_segment(names[1]) if len(names) > 1 else ""
+        # Nationality (line 2, pos 10-12) and the issuing country (line 1, pos
+        # 2-4) are the same ICAO 3-letter state code. It is alphabetic by spec,
+        # so when OCR mangles the line-2 value into non-letters (e.g. LAO -> 1OO)
+        # but the line-1 issuer is a clean 3-letter code, use the issuer.
+        nationality = line2[10:13].replace("<", "")
+        issuer = line1[2:5]
+        if not nationality.isalpha() and issuer.isalpha():
+            nationality = issuer
+
+        surname, given = self._extract_mrz_names(line1, nationality if nationality.isalpha() and len(nationality) == 3 else None)
         full_name = " ".join(part for part in [given, surname] if part).strip() or None
 
         parsed_birth = self._parse_mrz_date(birth, allow_future=False)
@@ -726,11 +944,26 @@ class MrzAnalyzer:
             "composite_check_digit_valid": composite_check_valid,
             "full_name": full_name,
             "passport_number": document_number.replace("<", ""),
-            "nationality": line2[10:13].replace("<", ""),
+            "nationality": nationality,
             "date_of_birth": parsed_birth,
             "expiry_date": parsed_expiry,
             "sex": line2[20],
         }
+
+    # For check-digit-guided repair: every digit an OCR letter plausibly stands
+    # for, most likely first. The default digit_map takes the first entry; the
+    # rest are only tried when a field's check digit rejects the first choice.
+    _DIGIT_ALTERNATIVES = {
+        "O": ("0",), "Q": ("0",), "D": ("0",),
+        "I": ("1",), "L": ("1",),
+        "Z": ("2", "7"),
+        "S": ("5", "3"),
+        "B": ("8", "3"),
+        "G": ("6", "9"),
+        "T": ("7", "1"),
+        "E": ("8", "6"),
+        "A": ("4",),
+    }
 
     @staticmethod
     def _normalize_td3_fields(line1: str, line2: str) -> tuple[str, str]:
@@ -740,6 +973,32 @@ class MrzAnalyzer:
         for index in numeric_positions:
             if index < len(chars) and chars[index] in digit_map:
                 chars[index] = digit_map[chars[index]]
+        # Sex (pos 20) is not check-digit protected; N/H are common misreads of M.
+        if len(chars) > 20 and chars[20] in ("N", "H", "W"):
+            chars[20] = "M"
+        # Check-digit-guided repair: when a numeric field fails its check digit,
+        # retry the positions where OCR produced a LETTER with that letter's
+        # other digit look-alikes (e.g. expiry "S50604" read from "350604":
+        # S->5 fails the check, S->3 passes, so 3 was the printed digit). The
+        # check digit is the oracle, so this can only turn wrong reads into
+        # values the document itself vouches for.
+        for start, end, check_pos in ((0, 9, 9), (13, 19, 19), (21, 27, 27)):
+            if len(chars) <= check_pos or not chars[check_pos].isdigit():
+                continue
+            field = "".join(chars[start:end])
+            if MrzAnalyzer._check_digit(field) == chars[check_pos]:
+                continue
+            for index in range(start, end):
+                original = line2[index] if index < len(line2) else "<"
+                for alternative in MrzAnalyzer._DIGIT_ALTERNATIVES.get(original, ())[1:]:
+                    candidate = field[: index - start] + alternative + field[index - start + 1 :]
+                    if MrzAnalyzer._check_digit(candidate) == chars[check_pos]:
+                        chars[index] = alternative
+                        field = candidate
+                        break
+                else:
+                    continue
+                break
         return line1, "".join(chars)
 
     @staticmethod

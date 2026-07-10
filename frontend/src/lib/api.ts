@@ -363,9 +363,15 @@ export const api = {
       timeoutMs: 60000
     }),
 
-  faceLogin: (file: File | Blob) => {
+  faceLogin: (capture: File | Blob | Blob[]) => {
     const body = new FormData();
-    body.append("file", file, file instanceof File ? file.name : "face-login.jpg");
+    if (Array.isArray(capture)) {
+      capture.forEach((frame, index) => {
+        body.append("frames", frame, frame instanceof File ? frame.name : `face-login-${index + 1}.jpg`);
+      });
+    } else {
+      body.append("file", capture, capture instanceof File ? capture.name : "face-login.jpg");
+    }
     return request<FaceLoginResponse>("/api/face-login", {
       method: "POST",
       body,

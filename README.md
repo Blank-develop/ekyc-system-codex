@@ -23,6 +23,21 @@ The OCR/MRZ adapter uses Tesseract through `pytesseract`. Install the Tesseract 
 
 ```bash
 brew install tesseract
+# Optional but recommended for Lao ID card names:
+brew install tesseract-lang
+```
+
+For stronger Lao ID card OCR, install the optional Surya OCR stack and keep the default engine order:
+
+```bash
+pip install -r backend/requirements-surya.txt
+export LALIGENCE_LAO_ID_OCR_ENGINE=surya,tesseract
+```
+
+Surya is used first for Lao ID cards when installed. Tesseract remains the fallback. Docker builds can include Surya with:
+
+```bash
+docker build --build-arg INSTALL_SURYA_OCR=true -t laligence-ekyc-api .
 ```
 
 ## Run Frontend
@@ -45,9 +60,10 @@ cp frontend/.env.example frontend/.env
 ## API
 
 - `POST /api/verifications`: create verification session with required JSON body `{ "user_id": "..." }`.
-- `POST /api/verifications/{session_id}/document`: upload passport image. Optional multipart field `ocr_text` can be supplied when an OCR adapter extracts MRZ text.
-- `POST /api/verifications/{session_id}/challenge`: mark one active liveness or hand challenge result.
-- `POST /api/verifications/{session_id}/selfie`: submit selfie analysis result.
+- `POST /api/verifications/{session_id}/document`: upload passport or Lao ID card image. Optional multipart field `ocr_text` can be supplied when an OCR adapter extracts document text.
+- `POST /api/verifications/{session_id}/active-liveness`: submit the server-verified active liveness evidence frame or burst for one challenge.
+- `POST /api/verifications/{session_id}/challenge`: mark one hand challenge result.
+- `POST /api/verifications/{session_id}/selfie`: submit selfie analysis image or live burst.
 - `POST /api/verifications/{session_id}/enroll-face`: enroll a passed verification session as a returning-user Face ID.
 - `POST /api/face-login`: capture a returning-user face, run passive liveness, and match against enrolled Face IDs.
 - `GET /api/profiles`: list enrolled demo profiles.
@@ -81,7 +97,9 @@ The selfie step now uses local OpenCV biometric models:
   - `facenox_detector_quantized.onnx`: facenox face detector asset, installed for parity with the upstream demo. The backend currently uses YuNet for face boxes.
   - `MiniFASNetV2.onnx`: 80x80, 3-class MiniFASNet model.
   - `MiniFASNetV1SE.onnx`: 80x80, 3-class MiniFASNet model.
-- A full-frame passive heuristic layer for screen/phone rectangle cues.
+- A full-frame passive heuristic layer for screen/phone/tablet display cues, including held-phone replay cues from visible side borders and fingers around the displayed face.
+- The web active liveness step submits a 3-frame evidence burst after each blink/head/mouth action. The backend rejects strong display-surface replay evidence and repeated screen/tablet cues before marking the challenge as passed.
+- The web selfie step submits a 10-frame live burst. The backend rejects recurring display/held-phone cues, strong model spoof signals, and bursts with almost no natural frame-to-frame motion or lighting change.
 
 Install model files:
 
@@ -89,9 +107,23 @@ Install model files:
 python3 scripts/install_face_models.py
 ```
 
-The facenox classifier is treated as the primary passive anti-spoof model. Its two-class output follows the upstream order: class `0` is real and class `1` is spoof. The backend converts the two logits to a spoof risk, combines that with the companion MiniFASNet exports when available, and still hard-fails obvious phone/screen-frame attacks.
+The facenox classifier is treated as the primary passive anti-spoof model. Its two-class output follows the upstream order: class `0` is real and class `1` is spoof. The backend converts the two logits to a spoof risk, combines that with the companion MiniFASNet exports by default, and still hard-fails obvious phone/screen/tablet-frame attacks. Optional DeepPixBiS/CDCN ONNX exports can be added with `LALIGENCE_PAD_EXTRA_MODEL_PATHS` or by placing `DeepPixBiS.onnx` / `CDCN.onnx` in `backend/models/anti_spoof/`.
 
 The passport upload route extracts an in-memory passport portrait embedding. The selfie route compares the selfie embedding against that session reference and rejects low matches or high passive spoof risk. Raw passport/selfie images are not stored by the backend.
+
+## Hand Gesture Challenge
+
+Each verification session assigns 3 random hand gestures from a 23-gesture catalog defined in `backend/app/services/session_store.py`. Sampling is easy-weighted: at least 2 of the 3 gestures always come from the easy pool (counting fingers, open palm, fist, thumb up, OK, pinched fingers, L shape), and at most one tricky gesture (rock on, call me, I love you, thumb down, crossed fingers) appears per session.
+
+Detection runs in the browser with MediaPipe Hands (`frontend/src/components/HandGestureCapture.tsx`): the user moves a hand into a randomly placed circle, performs the prompted gesture, and holds it until the progress ring completes. Challenge cards and the full-screen view show each gesture's visual and a per-gesture instruction.
+
+A user-facing guide for all gestures lives at `docs/hand-gesture-guide.md`, with branded one-page PDF/PNG exports:
+
+```bash
+python3 scripts/build_hand_gesture_guide_pdf.py
+```
+
+The script renders the guide with headless Google Chrome so gesture emoji match the web app. Rerun it after changing `HAND_PROMPTS`.
 
 ## Returning User Face Login
 
@@ -297,7 +329,8 @@ docker run --rm -p 8000:8000 \
 - `LALIGENCE_MAX_PASSIVE_LIVENESS_RISK`: passive anti-spoof rejection threshold.
 - `LALIGENCE_MAX_DOCUMENT_FRAUD_RISK`: document fraud rejection threshold.
 - `LALIGENCE_FACE_LOGIN_MATCH_THRESHOLD`: returning-user face login match threshold.
-- `LALIGENCE_PAD_ENABLE_COMPANION_MODELS`: set `true` to run the extra MiniFAS companion anti-spoof models. Default `false` keeps face login faster by using the primary facenox model plus heuristics.
+- `LALIGENCE_PAD_ENABLE_COMPANION_MODELS`: run the extra MiniFAS companion anti-spoof models. Default `true`; set `false` only for speed tests.
+- `LALIGENCE_PAD_EXTRA_MODEL_PATHS`: comma-separated ONNX paths for additional PAD companions such as DeepPixBiS/CDCN exports.
 
 ## Notes
 

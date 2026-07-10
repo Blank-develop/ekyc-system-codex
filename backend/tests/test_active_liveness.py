@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from app.api.routes import _has_strong_active_replay_evidence, active_liveness_quality_spoof_signals
+from app.api.routes import (
+    _face_login_hard_replay,
+    _face_login_live_candidate,
+    _has_strong_active_replay_evidence,
+    active_liveness_quality_spoof_signals,
+)
 from app.models.schemas import CompleteChallengeRequest, Decision, DocumentAnalysis, FraudSignal
+from app.services.face_biometrics import PassiveSpoofResult
 from app.services.session_store import VerificationStore
 
 
@@ -19,12 +25,13 @@ def test_printed_photo_held_at_distance_is_rejected_for_small_face() -> None:
     assert diagnostics["active_liveness_small_face_count"] == 3
 
 
-def test_recurring_model_spoof_blocks_even_with_adequate_face() -> None:
+def test_recurring_model_spoof_is_diagnostic_without_display_evidence() -> None:
     signals, _ = active_liveness_quality_spoof_signals(
         face_width_ratios=[0.30, 0.31, 0.29],
         model_risks=[0.88, 0.91, 0.40],
     )
-    assert "ACTIVE_LIVENESS_MODEL_SPOOF_HIGH" in _codes(signals)
+    assert "ACTIVE_LIVENESS_MODEL_SPOOF_HIGH" not in _codes(signals)
+    assert signals == []
 
 
 def test_single_model_spike_does_not_block_real_user_burst() -> None:
@@ -112,7 +119,7 @@ def test_active_liveness_replay_rejection_cannot_be_cleared_by_weak_retry() -> N
         checks={
             "active_liveness_passive_liveness_risk": 0.42,
             "active_liveness_model_spoof_risk": 0.52,
-            "active_liveness_screen_frame_score": 0.19,
+            "active_liveness_screen_frame_score": 0.25,
             "active_liveness_display_surface_score": 0.04,
             "active_liveness_paper_photo_score": 0.03,
             "active_liveness_heuristic_spoof_risk": 0.18,
@@ -125,6 +132,45 @@ def test_active_liveness_replay_rejection_cannot_be_cleared_by_weak_retry() -> N
     assert result.decision == Decision.rejected
     assert "ACTIVE_LIVENESS_REPLAY_DETECTED" in result.reason_codes
     assert result.biometric.active_liveness_signals[0].code == "ACTIVE_LIVENESS_REPLAY_DETECTED"
+
+
+def test_active_liveness_clean_retry_can_recover_with_mild_camera_artifacts() -> None:
+    store = VerificationStore()
+    session = store.create("user-replay-mild-artifact-retry")
+    store.set_document(session.session_id, DocumentAnalysis(status="passed"))
+    challenge_id = session.active_challenges[0].id
+
+    store.complete_active_challenge_with_evidence(
+        session.session_id,
+        CompleteChallengeRequest(challenge_id=challenge_id, passed=False),
+        checks={"active_liveness_passive_liveness_risk": 0.91},
+        signals=[
+            FraudSignal(
+                code="ACTIVE_LIVENESS_REPLAY_DETECTED",
+                label="Possible screen replay detected.",
+                severity="high",
+                score=0.91,
+            )
+        ],
+    )
+
+    result = store.complete_active_challenge_with_evidence(
+        session.session_id,
+        CompleteChallengeRequest(challenge_id=challenge_id, passed=True),
+        checks={
+            "active_liveness_passive_liveness_risk": 0.66,
+            "active_liveness_model_spoof_risk": 0.92,
+            "active_liveness_screen_frame_score": 0.22,
+            "active_liveness_display_surface_score": 0.56,
+            "active_liveness_paper_photo_score": 0.08,
+            "active_liveness_heuristic_spoof_risk": 0.41,
+        },
+        signals=[],
+    )
+
+    assert result.active_challenges[0].passed is True
+    assert result.biometric.active_liveness_signals == []
+    assert result.biometric.active_liveness_checks["active_liveness_replay_recovered"] is True
 
 
 def test_active_liveness_replay_rejection_cannot_be_cleared_by_strong_display_retry() -> None:
@@ -389,3 +435,76 @@ def test_active_liveness_strong_screen_evidence_blocks_replay() -> None:
         },
         risk=0.7,
     ) is True
+
+
+def test_face_login_model_noise_alone_is_not_hard_replay() -> None:
+    signals = [
+        FraudSignal(
+            code="PAD_MODEL_SPOOF_HIGH",
+            label="Anti-spoofing model predicts screen/photo spoof risk.",
+            severity="high",
+            score=0.82,
+        )
+    ]
+    assert _face_login_hard_replay(signals, risk=0.62) is False
+
+
+def test_face_login_clear_screen_cue_is_hard_replay() -> None:
+    signals = [
+        FraudSignal(
+            code="SELFIE_HELD_PHONE_SCREEN",
+            label="A held phone screen appears around the selfie face.",
+            severity="high",
+            score=0.7,
+        )
+    ]
+    assert _face_login_hard_replay(signals, risk=0.7) is True
+
+
+def test_face_login_accepts_model_noise_when_no_screen_or_print_cue() -> None:
+    passive = PassiveSpoofResult(
+        risk=0.78,
+        passed=False,
+        checks={
+            "passive_spoof_heuristic_risk": 0.18,
+            "passive_spoof_model_risk": 0.78,
+            "passive_spoof_screen_frame_score": 0.05,
+            "passive_spoof_display_surface_score": 0.08,
+            "passive_spoof_held_phone_score": 0.04,
+            "passive_spoof_paper_photo_score": 0.03,
+        },
+        signals=[
+            FraudSignal(
+                code="PAD_MODEL_SPOOF_HIGH",
+                label="Anti-spoofing model predicts screen/photo spoof risk.",
+                severity="high",
+                score=0.78,
+            )
+        ],
+    )
+
+    assert _face_login_live_candidate(passive) is True
+
+
+def test_face_login_rejects_clear_phone_or_tablet_cue_even_with_mild_risk() -> None:
+    passive = PassiveSpoofResult(
+        risk=0.44,
+        passed=False,
+        checks={
+            "passive_spoof_heuristic_risk": 0.44,
+            "passive_spoof_screen_frame_score": 0.09,
+            "passive_spoof_display_surface_score": 0.12,
+            "passive_spoof_held_phone_score": 0.58,
+            "passive_spoof_paper_photo_score": 0.03,
+        },
+        signals=[
+            FraudSignal(
+                code="SELFIE_HELD_PHONE_SCREEN",
+                label="A held phone screen appears around the selfie face.",
+                severity="high",
+                score=0.58,
+            )
+        ],
+    )
+
+    assert _face_login_live_candidate(passive) is False

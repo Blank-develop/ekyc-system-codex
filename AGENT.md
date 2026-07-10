@@ -1,25 +1,30 @@
-# LALIGENCE eKYC Agent Guide
+# Kyron eKYC Agent Guide
 
 ## Product Goal
 
-Build a web-first, mobile-ready eKYC system for passport identity proofing aligned with NIST IAL2. The first version uses a Python backend, local/open-source AI model adapters, and stores verification results only.
+Build a web-first, mobile-ready eKYC system for passport/Lao ID identity proofing designed toward NIST IAL2 alignment. The system uses a Python backend, local/open-source AI model adapters, and stores verification results plus verified Face ID profile data only after successful enrollment.
+
+The project started under the LALIGENCE name and is moving toward the Kyron product identity. Prefer Kyron for new product-facing docs and UI copy, while preserving legacy filenames unless a rename is explicitly requested.
 
 ## Current Scope
 
 - Passport capture by upload or browser camera.
+- Lao ID card capture by upload or browser camera.
 - Active face liveness challenge.
-- Hand gesture challenge with three randomized prompts.
-- Selfie capture for face match and passive liveness.
+- Hand gesture challenge with three randomized prompts drawn from a 23-gesture catalog; sampling is easy-weighted so at most one tricky gesture (`TRICKY_HAND_GESTURE_IDS` in `backend/app/services/session_store.py`) appears per session.
+- Selfie live burst capture for face match and passive liveness.
 - Automatic pass, reject, or pending decisions.
 - No permanent storage of raw passport images, selfies, or biometric video.
 - Returning-user login stores a local face template / Face ID plus verified OCR profile fields for demo matching.
 - Verification sessions require a real `user_id` so enrollment can enforce one active Face ID per user.
+- Face Pay transfer demo uses Face ID as a payment-style authorization step after enrollment.
+- Local testing now includes document print-copy, selfie passive liveness, active liveness, and face login dataset folders.
 
 ## Architecture
 
 - `backend/`: FastAPI API, verification result schema, fraud/liveness/model service boundaries.
 - `frontend/`: Vite React web app with camera capture and branded verification workflow.
-- `frontend/src/assets/logo.png`: LALIGENCE logo and brand anchor.
+- `frontend/src/assets/logo.png` and `kyron.png`: current Kyron logo/brand assets.
 - `Dockerfile`: deployable backend container with Tesseract and local face model installation.
 - `render.yaml`: public-demo Render Blueprint for the API and static frontend.
 - `deploy/digitalocean`: preferred faster demo deployment for DigitalOcean Singapore Droplet, PostgreSQL, and Caddy HTTPS.
@@ -27,13 +32,16 @@ Build a web-first, mobile-ready eKYC system for passport identity proofing align
 - `sdk/typescript`: mobile-ready TypeScript SDK for React Native, Expo, and other mobile clients calling the eKYC backend.
 - `sdk/flutter`: Flutter/Dart SDK for mobile apps calling the eKYC backend, published as `laligence_ekyc`.
 - Profile storage uses SQLAlchemy: PostgreSQL when `DATABASE_URL` is set, SQLite fallback at `backend/data/laligence_profiles.sqlite3` for local development.
+- `docs/project-overview.md`: current human-readable project status and feature summary.
+- `docs/kyron-ekyc-nist-ial2-white-paper-draft.docx`: NIST IAL2-aligned white paper draft.
+- `docs/dataset-result-dashboard.pdf`: one-page dataset result dashboard.
 
 ## Design System
 
 Use the local `ui-ux-pro-max` skill before major UI work:
 
 ```bash
-python3 .codex/skills/ui-ux-pro-max/scripts/search.py "passport ekyc identity verification security fraud detection SaaS professional" --design-system -p "LALIGENCE eKYC" -f markdown
+python3 .codex/skills/ui-ux-pro-max/scripts/search.py "passport ekyc identity verification security fraud detection SaaS professional" --design-system -p "Kyron eKYC" -f markdown
 ```
 
 Brand adaptation:
@@ -67,10 +75,13 @@ Brand adaptation:
   - Passport upload extracts a face embedding from the document portrait and stores it only in the in-memory session store.
   - Selfie upload extracts a selfie embedding, compares it with the passport portrait embedding, and rejects low matches.
   - Current SFace UI-normalized pass threshold is `0.68`, derived from OpenCV's published cosine threshold of `0.363`; scores around `0.68` to `0.74` should be treated as acceptable but worth monitoring during calibration.
-  - Passive PAD checks the face crop plus the full frame for a phone/screen-like rectangle around the detected face. `SELFIE_PHONE_SCREEN_FRAME` is a high-risk hard fail.
+  - Passive PAD checks the face crop plus the full frame for a phone/screen-like rectangle around the detected face. `SELFIE_PHONE_SCREEN_FRAME` is a high-risk hard fail. `SELFIE_HELD_PHONE_SCREEN` catches a visible handheld phone replay with side borders/fingers around the displayed face, and repeated burst cues become `SELFIE_BURST_HELD_PHONE_REPLAY`.
   - Selfie capture requires exactly one usable face. `SELFIE_MULTIPLE_FACES` is a high-risk hard fail because it catches phone/screen replay where both the real holder and the replayed face are visible.
   - Selfie face confidence below the local threshold is a hard fail (`SELFIE_FACE_CONFIDENCE_LOW`) to prevent animal/object false positives from YuNet.
-  - Passive PAD runs ONNX Runtime anti-spoofing from `backend/models/anti_spoof/`: facenox `best_model_quantized.onnx` as the primary classifier (MiniFASNetV2-SE, 2-class, 128x128 RGB, class 0 real/class 1 spoof). Silent-Face-Anti-Spoofing-style `MiniFASNetV2.onnx` and `MiniFASNetV1SE.onnx` companion signals are available when `LALIGENCE_PAD_ENABLE_COMPANION_MODELS=true`.
+  - Active liveness challenges must not be passed by frontend landmark motion alone. After a blink/head/mouth action is detected, the frontend sends a short evidence burst to `POST /api/verifications/{session_id}/active-liveness`; the backend must detect a usable face and aggregate passive PAD/replay checks across frames before marking that challenge as passed. The generic `/challenge` endpoint is for hand gestures only.
+  - Passive PAD runs ONNX Runtime anti-spoofing from `backend/models/anti_spoof/`: facenox `best_model_quantized.onnx` as the primary classifier (MiniFASNetV2-SE, 2-class, 128x128 RGB, class 0 real/class 1 spoof). Silent-Face-Anti-Spoofing-style `MiniFASNetV2.onnx` and `MiniFASNetV1SE.onnx` companion signals are enabled by default; set `LALIGENCE_PAD_ENABLE_COMPANION_MODELS=false` only for speed tests.
+  - Selfie verification should submit a short multi-frame burst, not only one still image. The backend aggregates frame PAD, recurring display/tablet cues, model spoof risk, and natural frame-to-frame motion/lighting checks before storing the selfie embedding.
+  - Optional stronger PAD companions such as DeepPixBiS/CDCN ONNX exports can be placed in `backend/models/anti_spoof/DeepPixBiS.onnx` or `backend/models/anti_spoof/CDCN.onnx`, or supplied through `LALIGENCE_PAD_EXTRA_MODEL_PATHS`.
   - Facenox is the calibration authority when available. Companion MiniFAS models may raise risk when they agree with facenox, but they should not hard-reject a live selfie by themselves because they can false-positive on glasses, shadows, and webcam compression.
   - `scripts/install_face_models.py` installs OpenCV YuNet/SFace plus the facenox `best_model_quantized.onnx` and `facenox_detector_quantized.onnx` assets. The backend uses YuNet for face boxes and the facenox classifier for passive anti-spoof scoring.
   - Do not expose face embeddings through API schemas or write raw biometric media to disk.
@@ -95,6 +106,7 @@ Brand adaptation:
   - For multi-class outputs, set `LALIGENCE_DOCUMENT_FRAUD_ONNX_FRAUD_INDEX` to the fraud/spoof class index; default is the last class.
   - Install `onnxruntime` and `numpy` only when a real model artifact is available.
   - Do not hardcode model weights or store uploaded passport images in the repo.
+- Hand gesture prompts live in `HAND_PROMPTS` in `backend/app/services/session_store.py`. Keep `sample_hand_prompts` easy-weighted (at most one gesture from `TRICKY_HAND_GESTURE_IDS` per session); the guarantee is covered by `backend/tests/test_session_store.py`. When adding a gesture, also update `classifyGesture`/`matchesGesture`/`gestureVisual` in `frontend/src/components/HandGestureCapture.tsx` and rebuild the gesture guide artifacts.
 - Store only result metadata, scores, reason codes, and audit timestamps unless the product owner explicitly changes retention policy.
 - Expired passport evidence must be rejected once OCR/MRZ expiry extraction is implemented.
 - Public deployment must keep CORS origin allowlists explicit through `LALIGENCE_CORS_ORIGINS`; do not use wildcard CORS for the hosted demo.
@@ -152,3 +164,20 @@ Before handing off changes:
 - Use `.venv/bin/python scripts/install_selfie_spoof_dataset.py --max-screen-images 0 --max-paper-videos 0 --target-axon-large-images 1000 --axon-large-frames-per-video 10` to install a larger 1000-image spoof benchmark from AxonData videos.
 - Use `.venv/bin/python scripts/install_selfie_spoof_dataset.py --skip-public --live-source /path/to/live-selfies` to add genuine samples captured on real devices.
 - Use `PYTHONPATH=backend .venv/bin/python backend/scripts/evaluate_selfie_spoof.py --dataset test_dataset/selfie_spoof` to report passive anti-spoof accuracy, false accept rate, false reject rate, and per-folder mistakes.
+- Document print-copy testing lives under `test_dataset/document_print_copy/` with real camera passport/Lao ID folders and fake printed paper, photocopy/scan, and screen-display folders.
+- Selfie passive liveness / face match testing lives under `test_dataset/selfie_passive_liveness_face_login/` with real live match/nonmatch, poor quality, screen replay, printed photo, paper mask, multiple faces, and no-valid-face folders.
+- Active liveness testing lives under `test_dataset/active_liveness/` with real live, glasses, poor lighting, phone/tablet/laptop replay, printed photo, and video replay folders.
+- Face login testing lives under `test_dataset/face_login/` with enrolled/unknown live users, enrolled/unknown screen replay, printed-photo, multiple-face, and no-valid-face folders.
+- Use `.venv/bin/python scripts/capture_selfie_dataset.py` to open the browser-based local dataset collector with main-folder selection, nested label selection, countdown capture, and direct file saving.
+- Use `.venv/bin/python scripts/evaluate_document_print_copy_dataset.py` to evaluate printed-copy document attacks against real camera captures.
+
+## Current Documentation Artifacts
+
+- `docs/project-overview.md`: current feature/status summary and recent updates.
+- `docs/nist-ial2-test-case-plan.md`: NIST IAL2-style scenario and expected-result test plan.
+- `docs/kyron-ekyc-nist-ial2-white-paper-draft.docx`: white paper draft for NIST IAL2-aligned positioning.
+- `docs/dataset-result-dashboard.pdf`: one-page PDF dashboard for dataset/pass-fail result presentation.
+- `docs/hand-gesture-guide.md` plus `docs/hand-gesture-guide.pdf`/`.png`: user-facing guide for all hand gesture challenges; rebuild with `python3 scripts/build_hand_gesture_guide_pdf.py` after changing `HAND_PROMPTS`.
+- `docs/system-workflow.pdf`/`.png`: one-page A4-landscape end-to-end workflow flowchart; rebuild with `python3 scripts/build_system_workflow_pdf.py` after flow changes.
+- `docs/guidebook/LALIGENCE_eKYC_Guidebook.pdf`: colleague/customer guidebook generated earlier under the legacy name.
+- `outputs/project_proposal/`: proposal DOCX/PDF and captured page screenshots.
