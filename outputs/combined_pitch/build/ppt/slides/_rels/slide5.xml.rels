@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="/ppt/slideLayouts/slideLayout1.xml" Id="Rlay01"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/logo.png" Id="Rlogo01"/>
+</Relationships>

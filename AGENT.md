@@ -8,6 +8,13 @@ The project started under the LALIGENCE name and is moving toward the Kyron prod
 
 ## Current Scope
 
+Phase 1 stabilization baseline:
+
+- New verification sessions include pipeline, decision-policy, and build versions.
+- Run `npm run phase1:gate` before release and review `outputs/phase1/release-gate.json`.
+- Acceptance criteria and the backlog are in `docs/phase-1-product-stabilization.md`.
+- The release gate is an engineering control, not evidence of NIST, ISO, PAD, or legal certification.
+
 - Passport capture by upload or browser camera.
 - Lao ID card capture by upload or browser camera.
 - Active face liveness challenge.

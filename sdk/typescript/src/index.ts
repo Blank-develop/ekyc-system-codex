@@ -37,6 +37,11 @@ export interface VerificationResult {
   created_at: string;
   updated_at: string;
   decision: Decision;
+  engine?: {
+    pipeline_version: string;
+    decision_policy_version: string;
+    build_sha: string;
+  };
   reason_codes: string[];
   document: {
     status: UploadStatus;

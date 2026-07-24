@@ -1296,6 +1296,15 @@ p {
   object-fit: cover;
 }
 
+/* Mirror the front-camera preview so it behaves like a mirror: move right and
+   your on-screen face moves right, matching every other selfie app and the
+   active-liveness view. Display only -- the captured frame is drawn from the
+   raw (un-mirrored) video, so face matching against the passport portrait is
+   unaffected. Document capture (rear camera) is intentionally not mirrored. */
+.camera-frame-face video {
+  transform: scaleX(-1);
+}
+
 .camera-empty {
   position: absolute;
   inset: 14%;
@@ -1582,6 +1591,24 @@ p {
   bottom: calc(max(18px, env(safe-area-inset-bottom)) + 96px);
   transform: translateX(-50%);
   width: min(560px, calc(100vw - 32px));
+}
+
+.camera-distance-warning {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 96px);
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 12px 14px;
+  border: 1px solid rgba(217, 174, 39, 0.94);
+  border-radius: 8px;
+  background: rgba(255, 253, 244, 0.95);
+  color: #071a43;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(7, 26, 67, 0.18);
+  backdrop-filter: blur(10px);
 }
 
 .active-liveness-fullscreen-actions {
@@ -3586,3 +3613,101 @@ code {
   background: #fdecea;
   color: var(--danger);
 }
+
+/* ---------- Admin: crossing evidence viewer ---------- */
+.evidence-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--rule, #dfe3ea);
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 7px;
+  cursor: pointer;
+  color: var(--navy-900, #0f1c38);
+}
+.evidence-open:hover { border-color: #b9c2d4; background: #f7f9fc; }
+
+.evidence-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 16, 34, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: flex-end;
+}
+.evidence-panel {
+  width: min(760px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  background: #fbfcfe;
+  border-left: 1px solid #dfe3ea;
+  padding: 20px 22px 40px;
+  box-shadow: -18px 0 40px -24px rgba(8, 22, 50, 0.5);
+}
+.evidence-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.evidence-head h3 { margin: 2px 0 0; font-size: 1.05rem; }
+
+.evidence-body { display: flex; flex-direction: column; gap: 20px; }
+.evidence-step h4 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--navy-900, #0f1c38);
+}
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.evidence-grid figure { margin: 0; }
+.evidence-grid figcaption {
+  font-size: 0.68rem;
+  color: #667089;
+  margin-top: 4px;
+  word-break: break-word;
+}
+.evidence-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef1f6;
+}
+.evidence-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.evidence-thumb-loading { animation: evidence-pulse 1.4s ease-in-out infinite; }
+.evidence-thumb-missing {
+  display: grid;
+  place-items: center;
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8b93a7;
+}
+@keyframes evidence-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .evidence-thumb-loading { animation: none; } }
+
+.evidence-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.evidence-timeline li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  padding: 6px 8px;
+  border: 1px solid #e7eaf1;
+  border-radius: 6px;
+  background: #fff;
+}
+.evidence-time { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; color: #667089; }
+.evidence-action { font-weight: 600; color: var(--navy-900, #0f1c38); }

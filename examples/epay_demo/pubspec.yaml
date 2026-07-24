@@ -1,0 +1,30 @@
+name: kyronpay_demo
+description: >-
+  KyronPay -- demo e-payment app showing how a fintech/e-wallet integrates the
+  Kyron eKYC platform: register via eKYC, get a seeded wallet balance, transfer
+  money, and log in by scanning your face.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  intl: ^0.20.0
+  camera: ^0.11.0
+  url_launcher: ^6.3.0
+  laligence_ekyc:
+    path: ../../sdk/flutter
+  file_picker: ^11.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,59 @@
+{
+  "folder": "/Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/passport",
+  "jpg_files": 868,
+  "passport_images_evaluated": 797,
+  "unique_passport_images_evaluated": 721,
+  "exact_duplicate_passport_records": 76,
+  "exact_duplicate_passport_groups": 76,
+  "face_or_nonpassport_skipped": 67,
+  "unpaired_jpg_skipped": 4,
+  "all_labelled_files": {
+    "images": 797,
+    "ocr_errors": 0,
+    "mrz_read": 682,
+    "mrz_valid": 612,
+    "mrz_unread": 115,
+    "mrz_invalid_or_unread": 185,
+    "field_correct": {
+      "passport_number_correct": 522,
+      "name_correct": 175,
+      "nationality_correct": 628,
+      "date_of_birth_correct": 629,
+      "expiry_date_correct": 644
+    },
+    "mrz_read_rate": 0.8557,
+    "mrz_valid_rate": 0.7679,
+    "field_accuracy": {
+      "passport_number_correct": 0.655,
+      "name_correct": 0.2196,
+      "nationality_correct": 0.788,
+      "date_of_birth_correct": 0.7892,
+      "expiry_date_correct": 0.808
+    }
+  },
+  "unique_content_only": {
+    "images": 721,
+    "ocr_errors": 0,
+    "mrz_read": 615,
+    "mrz_valid": 554,
+    "mrz_unread": 106,
+    "mrz_invalid_or_unread": 167,
+    "field_correct": {
+      "passport_number_correct": 476,
+      "name_correct": 162,
+      "nationality_correct": 568,
+      "date_of_birth_correct": 569,
+      "expiry_date_correct": 581
+    },
+    "mrz_read_rate": 0.853,
+    "mrz_valid_rate": 0.7684,
+    "field_accuracy": {
+      "passport_number_correct": 0.6602,
+      "name_correct": 0.2247,
+      "nationality_correct": 0.7878,
+      "date_of_birth_correct": 0.7892,
+      "expiry_date_correct": 0.8058
+    }
+  },
+  "elapsed_seconds": 1354.13
+}

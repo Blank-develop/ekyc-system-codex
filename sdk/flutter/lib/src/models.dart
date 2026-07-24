@@ -46,6 +46,7 @@ class Challenge {
     required this.prompt,
     required this.instruction,
     required this.passed,
+    this.nonce,
   });
 
   factory Challenge.fromJson(JsonMap json) {
@@ -55,6 +56,7 @@ class Challenge {
       prompt: json['prompt'] as String? ?? '',
       instruction: json['instruction'] as String? ?? '',
       passed: json['passed'] as bool? ?? false,
+      nonce: json['nonce'] as String?,
     );
   }
 
@@ -63,6 +65,7 @@ class Challenge {
   final String prompt;
   final String instruction;
   final bool passed;
+  final String? nonce;
 }
 
 class FraudSignal {
@@ -214,11 +217,13 @@ class VerificationResult {
     required this.createdAt,
     required this.updatedAt,
     required this.decision,
+    this.engine,
     required this.reasonCodes,
     required this.document,
     required this.biometric,
     required this.activeChallenges,
     required this.handChallenges,
+    this.sessionToken,
   });
 
   factory VerificationResult.fromJson(JsonMap json) {
@@ -228,6 +233,9 @@ class VerificationResult {
       createdAt: json['created_at'] as String? ?? '',
       updatedAt: json['updated_at'] as String? ?? '',
       decision: Decision.fromJson(json['decision'] as String? ?? ''),
+      engine: json['engine'] == null
+          ? null
+          : EngineMetadata.fromJson(_map(json['engine'])),
       reasonCodes: _stringList(json['reason_codes']),
       document: DocumentAnalysis.fromJson(_map(json['document'])),
       biometric: BiometricAnalysis.fromJson(_map(json['biometric'])),
@@ -237,6 +245,7 @@ class VerificationResult {
       handChallenges: _list(
         json['hand_challenges'],
       ).map(Challenge.fromJson).toList(),
+      sessionToken: json['session_token'] as String?,
     );
   }
 
@@ -245,11 +254,32 @@ class VerificationResult {
   final String createdAt;
   final String updatedAt;
   final Decision decision;
+  final EngineMetadata? engine;
   final List<String> reasonCodes;
   final DocumentAnalysis document;
   final BiometricAnalysis biometric;
   final List<Challenge> activeChallenges;
   final List<Challenge> handChallenges;
+  final String? sessionToken;
+}
+
+class EngineMetadata {
+  const EngineMetadata({
+    required this.pipelineVersion,
+    required this.decisionPolicyVersion,
+    required this.buildSha,
+  });
+
+  factory EngineMetadata.fromJson(JsonMap json) => EngineMetadata(
+    pipelineVersion: json['pipeline_version'] as String? ?? 'unversioned',
+    decisionPolicyVersion:
+        json['decision_policy_version'] as String? ?? 'unversioned',
+    buildSha: json['build_sha'] as String? ?? 'development',
+  );
+
+  final String pipelineVersion;
+  final String decisionPolicyVersion;
+  final String buildSha;
 }
 
 class UserProfile {

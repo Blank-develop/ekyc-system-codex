@@ -11,7 +11,9 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  Trash2
+  Trash2,
+  Images,
+  X
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import logoUrl from "../assets/logo.png";
@@ -21,14 +23,199 @@ import {
   AuditEvent,
   AuditVerifyResponse,
   AuthUserInfo,
+  SessionEvidence,
   UserProfile,
   api
 } from "../lib/api";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../lib/auth";
+import {
+  formatLocalDate,
+  formatLocalDateTime,
+  formatLocalTime,
+  localTimeZoneLabel
+} from "../lib/dateTime";
 
 type Status = { kind: "error" | "success"; message: string } | null;
 type Tab = "overview" | "attempts" | "faceids" | "audit";
 const ATTEMPT_PAGE_SIZE = 20;
+
+
+const EVIDENCE_STEPS: Array<{ key: string; label: string }> = [
+  { key: "document", label: "Document" },
+  { key: "active_liveness", label: "Active liveness" },
+  { key: "hand_gesture", label: "Hand gesture" },
+  { key: "selfie", label: "Selfie" }
+];
+
+/** Lazily fetches one frame; frames are auth-fetched and access-logged server-side. */
+function EvidenceThumb({ frameId, label }: { frameId: string; label: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let revoked: string | null = null;
+    let cancelled = false;
+    api
+      .evidenceFrameUrl(frameId)
+      .then((objectUrl) => {
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        revoked = objectUrl;
+        setUrl(objectUrl);
+      })
+      .catch(() => setFailed(true));
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [frameId]);
+
+  if (failed) return <div className="evidence-thumb evidence-thumb-missing">unavailable</div>;
+  if (!url) return <div className="evidence-thumb evidence-thumb-loading" />;
+  return (
+    <a className="evidence-thumb" href={url} target="_blank" rel="noreferrer" title={`${label} — open full size`}>
+      <img src={url} alt={label} />
+    </a>
+  );
+}
+
+function EvidenceViewer({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const [data, setData] = useState<SessionEvidence | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api
+      .sessionEvidence(sessionId)
+      .then((result) => !cancelled && setData(result))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Could not load evidence."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const frames = data?.frames ?? [];
+
+  return (
+    <div className="evidence-backdrop" role="dialog" aria-modal="true" aria-label="Crossing evidence">
+      <div className="evidence-panel">
+        <header className="evidence-head">
+          <div>
+            <p className="admin-eyebrow">Crossing evidence</p>
+            <h3>
+              <code className="admin-hash">{sessionId.slice(0, 8)}…</code>
+            </h3>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close evidence">
+            <X size={20} />
+          </button>
+        </header>
+
+        {loading && <p className="admin-muted">Loading evidence…</p>}
+        {error && <p className="form-error">{error}</p>}
+
+        {!loading && !error && (
+          <div className="evidence-body">
+            {frames.length === 0 && (
+              <p className="admin-muted">
+                No frames retained for this session. Evidence capture is enabled per deployment
+                (LALIGENCE_EVIDENCE_ENABLED).
+              </p>
+            )}
+
+            {EVIDENCE_STEPS.map(({ key, label }) => {
+              const stepFrames = frames.filter((frame) => frame.step === key);
+              if (stepFrames.length === 0) return null;
+              return (
+                <section className="evidence-step" key={key}>
+                  <h4>
+                    {label} <span className="admin-muted">({stepFrames.length})</span>
+                  </h4>
+                  <div className="evidence-grid">
+                    {stepFrames.map((frame) =>
+                      frame.available ? (
+                        <figure key={frame.id}>
+                          <EvidenceThumb frameId={frame.id} label={`${label} ${frame.sequence + 1}`} />
+                          <figcaption>
+                            {frame.label ? `${frame.label} · ` : ""}
+                            {Math.round(frame.byte_size / 1024)} KB
+                            {frame.encrypted && <span title="Encrypted at rest"> · 🔒</span>}
+                          </figcaption>
+                        </figure>
+                      ) : (
+                        <figure key={frame.id}>
+                          <div className="evidence-thumb evidence-thumb-missing">expired</div>
+                          <figcaption>media disposed</figcaption>
+                        </figure>
+                      )
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+
+            {(data?.events.length ?? 0) > 0 && (
+              <section className="evidence-step">
+                <h4>
+                  Action timeline <span className="admin-muted">({localTimeZoneLabel})</span>
+                </h4>
+                <ol className="evidence-timeline">
+                  {data!.events.map((event, index) => (
+                    <li key={index}>
+                      <span className="evidence-time">
+                        {formatLocalTime(event.occurred_at)}
+                      </span>
+                      <span className="evidence-action">
+                        {event.step} · {event.action}
+                      </span>
+                      {event.outcome && (
+                        <span className={`attempt-badge attempt-badge-${event.outcome}`}>{event.outcome}</span>
+                      )}
+                      {event.reason_codes.length > 0 && (
+                        <span className="admin-muted"> {event.reason_codes.join(", ")}</span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+
+            <section className="evidence-step">
+              <h4>
+                Access history{" "}
+                <span className="admin-muted">
+                  (who viewed this traveller · {localTimeZoneLabel})
+                </span>
+              </h4>
+              {(data?.access_log.length ?? 0) === 0 ? (
+                <p className="admin-muted">No prior access recorded.</p>
+              ) : (
+                <ol className="evidence-timeline">
+                  {data!.access_log.slice(0, 12).map((entry, index) => (
+                    <li key={index}>
+                      <span className="evidence-time">
+                        {formatLocalDateTime(entry.occurred_at)}
+                      </span>
+                      <span className="evidence-action">
+                        {entry.actor} · {entry.action}
+                      </span>
+                      {entry.client_ip && <span className="admin-muted"> {entry.client_ip}</span>}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AdminConsole() {
   const [user, setUser] = useState<AuthUserInfo | null>(null);
@@ -51,6 +238,7 @@ export function AdminConsole() {
   const [decisionFilter, setDecisionFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
   const [attemptOffset, setAttemptOffset] = useState(0);
+  const [evidenceSession, setEvidenceSession] = useState<string | null>(null);
 
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [auditVerify, setAuditVerify] = useState<AuditVerifyResponse | null>(null);
@@ -476,9 +664,15 @@ export function AdminConsole() {
                     {attempts.map((a) => (
                       <tr key={a.session_id}>
                         <td>
-                          <code className="admin-hash" title={a.session_id}>
-                            {a.session_id.slice(0, 8)}…
-                          </code>
+                          <button
+                            type="button"
+                            className="evidence-open"
+                            onClick={() => setEvidenceSession(a.session_id)}
+                            title="View retained evidence for this crossing"
+                          >
+                            <Images size={13} />
+                            <code className="admin-hash">{a.session_id.slice(0, 8)}…</code>
+                          </button>
                         </td>
                         <td>{a.user_id}</td>
                         <td>
@@ -512,7 +706,7 @@ export function AdminConsole() {
                         </td>
                         <td>{a.face_match_score != null ? a.face_match_score.toFixed(2) : "—"}</td>
                         <td>{a.client_ip ?? "—"}</td>
-                        <td title={a.updated_at}>{new Date(a.updated_at).toLocaleString()}</td>
+                        <td title={`${a.updated_at} UTC`}>{formatLocalDateTime(a.updated_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -588,8 +782,8 @@ export function AdminConsole() {
                       <td>{p.user_id}</td>
                       <td>{p.full_name ?? "—"}</td>
                       <td>{p.nationality ?? "—"}</td>
-                      <td>{p.enrolled_at ? new Date(p.enrolled_at).toLocaleDateString() : "—"}</td>
-                      <td>{p.last_login_at ? new Date(p.last_login_at).toLocaleString() : "—"}</td>
+                      <td>{formatLocalDate(p.enrolled_at)}</td>
+                      <td>{formatLocalDateTime(p.last_login_at)}</td>
                       <td>{p.consent_version ?? "—"}</td>
                       <td>
                         <button className="admin-icon-danger" onClick={() => handleDeleteProfile(p)} title="Delete this Face ID">
@@ -647,7 +841,7 @@ export function AdminConsole() {
                   {audit.map((e) => (
                     <tr key={e.seq}>
                       <td>{e.seq}</td>
-                      <td>{new Date(e.event_time).toLocaleString()}</td>
+                      <td>{formatLocalDateTime(e.event_time)}</td>
                       <td>{e.event_type}</td>
                       <td>{e.action}</td>
                       <td>{e.actor ?? "—"}</td>
@@ -662,6 +856,9 @@ export function AdminConsole() {
             </div>
           )}
         </section>
+      )}
+      {evidenceSession && (
+        <EvidenceViewer sessionId={evidenceSession} onClose={() => setEvidenceSession(null)} />
       )}
     </main>
   );

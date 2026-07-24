@@ -1,0 +1,49 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "capture-tool",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "scripts/capture_selfie_dataset.py"
+      ],
+      "port": 8787,
+      "autoPort": false
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "frontend",
+      "port": 5173,
+      "autoPort": false
+    },
+    {
+      "name": "photo-journal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "--prefix",
+        "/Users/chilanhouthnitvongkhay/Downloads/myworld._.isblank",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": false
+    },
+    {
+      "name": "fall-alert-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "--prefix",
+        "/Users/chilanhouthnitvongkhay/Downloads/LoungSy_demo",
+        "start"
+      ],
+      "port": 3002,
+      "autoPort": false
+    }
+  ]
+}

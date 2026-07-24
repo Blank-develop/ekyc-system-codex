@@ -78,6 +78,42 @@ export interface AttemptSummary {
   rejected: number;
 }
 
+export interface EvidenceFrame {
+  id: string;
+  step: string;
+  label: string | null;
+  sequence: number;
+  byte_size: number;
+  encrypted: boolean;
+  sha256: string;
+  captured_at: string | null;
+  expires_at: string | null;
+  available: boolean;
+}
+
+export interface EvidenceEvent {
+  step: string;
+  action: string;
+  outcome: string | null;
+  reason_codes: string[];
+  duration_ms: number | null;
+  occurred_at: string | null;
+}
+
+export interface EvidenceAccess {
+  actor: string;
+  action: string;
+  client_ip: string | null;
+  occurred_at: string | null;
+}
+
+export interface SessionEvidence {
+  session_id: string;
+  frames: EvidenceFrame[];
+  events: EvidenceEvent[];
+  access_log: EvidenceAccess[];
+}
+
 export interface AdminOverview {
   attempts: AttemptSummary;
   enrolled_face_ids: number;
@@ -140,6 +176,11 @@ export interface VerificationResult {
   created_at: string;
   updated_at: string;
   decision: Decision;
+  engine?: {
+    pipeline_version: string;
+    decision_policy_version: string;
+    build_sha: string;
+  };
   reason_codes: string[];
   document: {
     status: "pending" | "passed" | "rejected";
@@ -313,13 +354,29 @@ export const api = {
     });
   },
 
-  completeChallenge: (sessionId: string, challengeId: string, nonce?: string | null, passed = true) =>
-    request<VerificationResult>(`/api/verifications/${sessionId}/challenge`, {
+  completeChallenge: (
+    sessionId: string,
+    challengeId: string,
+    nonce?: string | null,
+    passed = true,
+    frames?: Blob[]
+  ) => {
+    // Multipart so the gesture can carry face evidence: the server binds the
+    // face in these frames to the passport portrait, preventing one person from
+    // performing the gesture on another's behalf.
+    const body = new FormData();
+    body.append("challenge_id", challengeId);
+    body.append("passed", String(passed));
+    if (nonce) body.append("nonce", nonce);
+    (frames ?? []).forEach((frame, index) => {
+      body.append("frames", frame, `${challengeId}-gesture-${index + 1}.jpg`);
+    });
+    return request<VerificationResult>(`/api/verifications/${sessionId}/challenge`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_id: challengeId, passed, nonce }),
+      body,
       retries: 2
-    }),
+    });
+  },
 
   verifyActiveLiveness: (sessionId: string, challengeId: string, file: File | Blob | Blob[]) => {
     const body = new FormData();
@@ -415,6 +472,26 @@ export const api = {
 
   verifyAudit: () =>
     request<AuditVerifyResponse>("/api/audit/verify", { retries: 1 }),
+
+  sessionEvidence: (sessionId: string) =>
+    request<SessionEvidence>(`/api/evidence/${sessionId}`, { retries: 1 }),
+
+  // Frames are served as bytes (decrypted server-side) and every view is
+  // access-logged, so they are fetched with auth rather than referenced by URL.
+  evidenceFrameUrl: async (frameId: string): Promise<string> => {
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/api/evidence/frame/${frameId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!response.ok) throw new Error("Evidence frame could not be loaded.");
+    return URL.createObjectURL(await response.blob());
+  },
+
+  purgeExpiredEvidence: () =>
+    request<{ files_removed: number; rows_removed: number }>("/api/evidence/purge-expired", {
+      method: "POST",
+      retries: 0
+    }),
 
   adminOverview: () => request<AdminOverview>("/api/admin/overview", { retries: 1 }),
 

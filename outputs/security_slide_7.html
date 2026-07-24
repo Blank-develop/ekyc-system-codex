@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><style>
+  @page { size: 1280px 720px; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f6f8fc; color: #071b4a; }
+  .slide { width: 1280px; height: 720px; background: #f6f8fc; display: flex; flex-direction: column; overflow: hidden; }
+  .slide + .slide { page-break-before: always; }
+  header { background: #071b4a; color: white; padding: 18px 40px; border-bottom: 4px solid #d9ae27;
+    display: flex; align-items: center; gap: 16px; }
+  header .logo { height: 44px; }
+  header .titles { display: flex; flex-direction: column; }
+  header .brand { font-size: 11px; letter-spacing: 2.5px; color: #d9ae27; }
+  header h1 { font-size: 27px; font-weight: 700; margin-top: 3px; }
+  header .badge { margin-left: auto; text-align: right; font-size: 11px; color: #dde5f2; line-height: 1.5; }
+  header .badge b { color: white; }
+  main { flex: 1; padding: 24px 40px 6px; display: flex; flex-direction: column; gap: 16px; }
+  .block { background: white; border: 1px solid #dbe2ef; border-left: 5px solid #5a6478; border-radius: 10px; padding: 14px 18px; }
+  .block.problem { border-left-color: #a3262d; }
+  .block.did { border-left-color: #13795b; }
+  .block.test { border-left-color: #d9ae27; flex: 1; }
+  .blab { font-size: 11.5px; text-transform: uppercase; letter-spacing: 1px; font-weight: 800; margin-bottom: 6px; }
+  .problem .blab { color: #a3262d; } .did .blab { color: #13795b; } .test .blab { color: #c9a12a; }
+  .block p { font-size: 15px; color: #10255a; line-height: 1.5; }
+  .block b { color: #071b4a; }
+  .test ul { margin: 0 0 0 4px; list-style: none; display: grid; gap: 4px; }
+  .test li { font-size: 13.5px; color: #5a6478; padding-left: 16px; position: relative; line-height: 1.4; }
+  .test li::before { content: "•"; position: absolute; left: 2px; color: #d9ae27; }
+  .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { background: #f6f8fc; border: 1px solid #dbe2ef; border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+  .chip em { font-style: normal; color: #5a6478; } .chip b { color: #071b4a; margin-left: 6px; }
+  .pass { background: #13795b; color: white; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 800; }
+  footer { margin: 6px 40px 16px; padding: 10px 16px; background: white; border: 1px solid #dbe2ef;
+    border-left: 4px solid #d9ae27; border-radius: 0 8px 8px 0; font-size: 10.5px; color: #5a6478; line-height: 1.5; }
+  footer b { color: #071b4a; }
+  /* cover */
+  .cover { justify-content: center; gap: 22px; }
+  .lede { font-size: 19px; color: #10255a; line-height: 1.55; max-width: 1050px; }
+  .lede b { color: #071b4a; }
+  .stats { display: flex; gap: 16px; }
+  .stat { flex: 1; background: white; border: 1px solid #dbe2ef; border-top: 4px solid #d9ae27; border-radius: 10px; padding: 14px; text-align: center; }
+  .stat .num { font-size: 44px; font-weight: 800; color: #071b4a; line-height: 1; }
+  .stat .lab { font-size: 12.5px; color: #5a6478; margin-top: 6px; font-weight: 600; }
+  .agenda { font-size: 13.5px; color: #5a6478; line-height: 1.6; }
+  .agenda b { color: #071b4a; }
+  /* closing */
+  .two-col { flex-direction: row; gap: 30px; padding-top: 22px; }
+  .col { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+  .col-title { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 800; padding-bottom: 8px; border-bottom: 2px solid #dbe2ef; }
+  .col-title.green { color: #13795b; } .col-title.gold { color: #c9a12a; }
+  .row { display: flex; gap: 11px; align-items: flex-start; }
+  .tick { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; color: white; font-size: 14px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .tick.g { background: #13795b; } .tick.o { background: #c9a12a; }
+  .fix-body { display: flex; flex-direction: column; }
+  .fix-body strong { font-size: 14.5px; color: #071b4a; }
+  .fix-body span { font-size: 12.5px; color: #5a6478; line-height: 1.45; margin-top: 2px; }
+</style></head><body><div class="slide">
+  <header>
+    <div class="titles"><span class="brand">KYRON eKYC · SECURITY</span><h1>Proven — and the road ahead</h1></div>
+    <div class="badge">Honest status<br/><b>aligned, not yet certified</b></div>
+  </header>
+  <main class="two-col">
+    <section class="col"><h2 class="col-title green">How we proved it</h2><div class="row"><div class="tick g">✓</div><div class="fix-body"><strong>86 automated tests</strong><span>The computer re-checks every rule itself — fast and repeatable (one command).</span></div></div><div class="row"><div class="tick g">✓</div><div class="fix-body"><strong>16 documented test cases</strong><span>Each with objective, steps, and expected vs actual result — all PASS.</span></div></div><div class="row"><div class="tick g">✓</div><div class="fix-body"><strong>Live checks on the deployed demo</strong><span>Poking the real website returns “blocked”: 403 / 401 / 429.</span></div></div><div class="row"><div class="tick g">✓</div><div class="fix-body"><strong>Normal use still works</strong><span>A regular person can still complete a verification — nothing broke.</span></div></div></section>
+    <section class="col"><h2 class="col-title gold">Next, for production</h2><div class="row"><div class="tick o">→</div><div class="fix-body"><strong>Encrypt stored face data &amp; details (with proper key management)</strong></div></div><div class="row"><div class="tick o">→</div><div class="fix-body"><strong>Add real accounts / login for the main steps (in the production product)</strong></div></div><div class="row"><div class="tick o">→</div><div class="fix-body"><strong>Fully check the gesture on the server (a hand model, not the app’s word)</strong></div></div><div class="row"><div class="tick o">→</div><div class="fix-body"><strong>Bigger-scale rate limiting + activity logs for production</strong></div></div></section>
+  </main>
+  <footer>Designed toward <b>NIST IAL2</b> · liveness built to <b>ISO/IEC 30107-3</b> · passport checks per <b>ICAO 9303</b>. Formal certification (ISO 30107-3 PAD, ISO 27001 / SOC 2) pending independent assessment.</footer>
+</div></body></html>

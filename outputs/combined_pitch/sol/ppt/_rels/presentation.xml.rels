@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="/ppt/theme/theme1.xml" Id="R10a0e8661f0147df"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="/ppt/slideMasters/slideMaster1.xml" Id="R60a2cb2a20684de8"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="/ppt/notesMasters/notesMaster1.xml" Id="R30395c6f378d40a5"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/presProps" Target="/ppt/presProps.xml" Id="R9de92fd84d83441c"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/viewProps" Target="/ppt/viewProps.xml" Id="Ra146f34aaaad41eb"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles" Target="/ppt/tableStyles.xml" Id="Rb35ed2cd21f54d21"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide1.xml" Id="Rf58eaba39af34721"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide2.xml" Id="Raa2eff3bde86468b"/>
+</Relationships>

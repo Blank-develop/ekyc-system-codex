@@ -203,7 +203,7 @@ export function App() {
     return completed / 5;
   }, [result]);
 
-  const sync = async (task: () => Promise<VerificationResult>, message: string, next?: StepKey) => {
+  const sync = async (task: () => Promise<VerificationResult>, message: string, next?: StepKey): Promise<boolean> => {
     try {
       setBusy(true);
       setError(null);
@@ -216,8 +216,10 @@ export function App() {
         setActiveStep("document");
         setStatusMessage(`${documentLabels[documentType].title} rejected. Please upload a clearer or valid document image.`);
       }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -245,12 +247,18 @@ export function App() {
         }, 900);
       } else {
         const codes = nextResult.document.signals.map((signal) => signal.code);
+        const mrzRetakeRequired = codes.includes("MRZ_NOT_CONFIDENT") || codes.includes("MRZ_NOT_READ");
+        const rejectionMessage = codes.includes("DOCUMENT_MIRRORED")
+          ? "The document looks mirrored or reversed — its text reads backwards. If you used a front (selfie) camera, it flips the image: use the rear camera or hold the photo page facing the camera, then retake."
+          : mrzRetakeRequired
+            ? "The MRZ could not be validated. Retake the passport photo with both MRZ lines fully visible, sharp, and with space below the page."
+            : `Please upload a clearer, valid ${documentLabels[documentType].upload} image and try again.`;
         setActiveStep("document");
-        setStatusMessage(`${documentLabels[documentType].title} rejected. Please upload a clearer or valid document image.`);
+        setStatusMessage(`${documentLabels[documentType].title} rejected. ${rejectionMessage}`);
         setDocumentNotice({
           type: "failure",
           title: `${documentLabels[documentType].title} rejected`,
-          message: `Please upload a clearer, valid ${documentLabels[documentType].upload} image and try again.`,
+          message: rejectionMessage,
           codes: codes.length ? codes : ["DOCUMENT_REJECTED"]
         });
       }
@@ -313,9 +321,16 @@ export function App() {
     );
   };
 
-  const completeChallenge = (challenge: Challenge, next?: StepKey) => {
-    if (!sessionId) return;
-    sync(() => api.completeChallenge(sessionId, challenge.id, challenge.nonce), `${challenge.prompt} confirmed`, next);
+  const completeChallenge = async (challenge: Challenge, next?: StepKey, frames?: Blob[]): Promise<boolean> => {
+    if (!sessionId) return false;
+    // The gesture step can now be rejected (e.g. the face in the gesture frames
+    // does not match the document portrait), so the caller needs the outcome to
+    // release its retry lock instead of leaving the user stuck.
+    return sync(
+      () => api.completeChallenge(sessionId, challenge.id, challenge.nonce, true, frames),
+      `${challenge.prompt} confirmed`,
+      next
+    );
   };
 
   const verifyActiveChallenge = async (challenge: Challenge, allDone: boolean, evidence: Blob | Blob[]) => {
@@ -346,14 +361,50 @@ export function App() {
       }
 
       const codes = nextResult.biometric.active_liveness_signals.map((signal) => signal.code);
-      if (codes.includes("ACTIVE_LIVENESS_REPLAY_DETECTED")) {
-        setStatusMessage("Active liveness needs a clean live-face retry.");
-        setError("Screen or replay detected. Keep the same session, remove the screen, and repeat the action with your real face directly in front of the camera.");
-      } else {
-        setStatusMessage("Active liveness rejected. Please use your real face directly in front of the camera.");
-        setError(codes.length ? `Active liveness rejected: ${codes.join(", ")}` : "Active liveness rejected. Try again.");
+      if (codes.includes("ACTIVE_LIVENESS_FACE_TOO_SMALL")) {
+        const guidance = "Your face is too far from the camera. Move closer until your face fills about one-third of the screen, keep your full face visible, then repeat the action.";
+        setStatusMessage("Move closer for a clearer live-face check.");
+        setError(guidance);
+        return guidance;
       }
-      return false;
+      if (codes.includes("ACTIVE_LIVENESS_FACE_NOT_FOUND")) {
+        const guidance = "We could not clearly detect your face. Center your full face, move slightly closer, remove any obstruction, and try again.";
+        setStatusMessage("Center your face and retry.");
+        setError(guidance);
+        return guidance;
+      }
+      if (codes.includes("ACTIVE_LIVENESS_FACE_CONFIDENCE_LOW")) {
+        const guidance = "Your face was not clear enough to verify. Move closer, clean the camera lens, face soft even light, and hold still while repeating the action.";
+        setStatusMessage("Improve face clarity and retry.");
+        setError(guidance);
+        return guidance;
+      }
+      if (codes.includes("ACTIVE_LIVENESS_MULTIPLE_FACES")) {
+        const guidance = "More than one face was detected. Make sure only you are visible, then repeat the action.";
+        setStatusMessage("Only one face can be visible.");
+        setError(guidance);
+        return guidance;
+      }
+      // Checked after the quality codes above: a blurry or tiny face produces a
+      // weak embedding, so quality guidance is the more useful message. Only
+      // when the face was captured clearly do we report an identity mismatch.
+      if (codes.includes("ACTIVE_LIVENESS_FACE_MISMATCH")) {
+        const guidance = "This face does not match the portrait in the uploaded document. The same person must complete every step — check that you uploaded your own document, then repeat the action.";
+        setStatusMessage("Face does not match the document portrait.");
+        setError(guidance);
+        return guidance;
+      }
+      if (codes.includes("ACTIVE_LIVENESS_REPLAY_DETECTED")) {
+        const guidance = "The live-face check found screen-like or replay signals. If this is your real face, move closer, avoid a bright window or screen reflection, use soft even lighting, and repeat the action.";
+        setStatusMessage("Active liveness needs a clean live-face retry.");
+        setError(guidance);
+        return guidance;
+      } else {
+        const guidance = "Live-face verification was not clear enough. Move closer, center your full face, use even lighting, and repeat the action.";
+        setStatusMessage("Active liveness needs a clearer retry.");
+        setError(guidance);
+        return guidance;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Active liveness could not be verified.");
       return false;
@@ -651,7 +702,7 @@ export function App() {
             {activeStep === "gesture" && (
               <HandGestureStep
                 challenges={result?.hand_challenges ?? []}
-                onComplete={(challenge, allDone) => completeChallenge(challenge, allDone ? "selfie" : undefined)}
+                onComplete={(challenge, allDone, frames) => completeChallenge(challenge, allDone ? "selfie" : undefined, frames)}
               />
             )}
             {activeStep === "selfie" && <SelfieStep busy={selfieBusy} notice={selfieNotice} onCapture={analyzeSelfie} />}
@@ -1201,7 +1252,7 @@ function ActiveLivenessStep({
   onComplete
 }: {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean>;
+  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean | string>;
 }) {
   return (
     <div className="step-layout">
@@ -1223,7 +1274,7 @@ function HandGestureStep({
   onComplete
 }: {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean) => void;
+  onComplete: (challenge: Challenge, allDone: boolean, frames: Blob[]) => Promise<boolean>;
 }) {
   return (
     <div className="step-layout">
@@ -1446,13 +1497,21 @@ function ProfileSummary({ profile }: { profile: UserProfile }) {
 function OcrSummary({ result, compact = false }: { result: VerificationResult; compact?: boolean }) {
   const ocr = result.document.ocr;
   const isLaoId = ocr.document_type === "lao_id_card";
+  const mrzFound = result.document.checks.mrz_found;
+  const mrzStatus = ocr.mrz_valid === null
+    ? null
+    : ocr.mrz_valid
+      ? "Valid"
+      : mrzFound === false
+        ? "Not confidently read"
+        : "Check digits failed";
   const rows = [
     ["Name", ocr.full_name],
     [isLaoId ? "ID No." : "Passport No.", ocr.id_number ?? ocr.document_number ?? ocr.passport_number],
     ["Nationality", ocr.nationality],
     ["Date of birth", ocr.date_of_birth],
     ["Expiry", ocr.expiry_date],
-    [isLaoId ? "OCR confidence" : "MRZ valid", isLaoId ? `${Math.round(ocr.confidence * 100)}%` : ocr.mrz_valid === null ? null : ocr.mrz_valid ? "Yes" : "No"]
+    [isLaoId ? "OCR confidence" : "MRZ status", isLaoId ? `${Math.round(ocr.confidence * 100)}%` : mrzStatus]
   ].filter(([, value]) => value);
 
   if (!rows.length) return null;

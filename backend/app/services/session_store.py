@@ -15,6 +15,7 @@ from app.models.schemas import (
     CompleteChallengeRequest,
     Decision,
     DocumentAnalysis,
+    EngineMetadata,
     FraudSignal,
     SelfieAnalysisRequest,
     VerificationResult,
@@ -168,6 +169,7 @@ class VerificationStore:
     def create(self, user_id: str) -> VerificationResult:
         self.prune_expired()  # bound memory: sweep stale sessions on each creation
         now = datetime.now(timezone.utc)
+        settings = get_settings()
         active = [
             Challenge(id=key, type=ChallengeType.active_liveness, prompt=prompt, instruction=instruction)
             for key, prompt, instruction in random.sample(ACTIVE_PROMPTS, 3)
@@ -188,6 +190,11 @@ class VerificationStore:
             user_id=user_id.strip(),
             created_at=now,
             updated_at=now,
+            engine=EngineMetadata(
+                pipeline_version=settings.pipeline_version,
+                decision_policy_version=settings.decision_policy_version,
+                build_sha=settings.build_sha,
+            ),
             active_challenges=active,
             hand_challenges=hands,
         )

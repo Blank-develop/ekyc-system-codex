@@ -1,8 +1,9 @@
+import json
 import secrets
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from starlette.concurrency import run_in_threadpool
 
@@ -35,6 +36,7 @@ from app.models.schemas import (
 )
 from app.services import auth as auth_service
 from app.services.attempt_store import attempt_store
+from app.services.evidence_store import evidence_store
 from app.services.audit import audit_log
 from app.services.key_provider import resolve_secret
 from app.services.notifier import get_notifier, mask_destination
@@ -42,7 +44,7 @@ from app.services.face_biometrics import OpenCvFaceRecognizer
 from app.services.fraud import LaoIdCardFraudAnalyzer, PassportFraudAnalyzer
 from app.services.profile_store import ProfileEnrollmentConflict, profile_store
 from app.services.rate_limit import SlidingWindowLimiter
-from app.services.selfie import SelfieAnalyzer
+from app.services.selfie import LIVE_STEP_FACE_MATCH_THRESHOLD, SelfieAnalyzer
 from app.services.session_store import store
 
 router = APIRouter()
@@ -74,10 +76,24 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _record_attempt(result: VerificationResult, request: Request) -> VerificationResult:
+def _record_attempt(
+    result: VerificationResult, request: Request, *, step: str | None = None, action: str | None = None
+) -> VerificationResult:
     """Log the session's current state to the admin attempts store, then return
-    the same result unchanged (so this can wrap a `return` without extra lines)."""
+    the same result unchanged (so this can wrap a `return` without extra lines).
+
+    When a step is named, also append to the evidence timeline so a reviewer can
+    reconstruct the whole crossing action by action.
+    """
     attempt_store.record(result, _client_ip(request))
+    if step:
+        evidence_store.record_event(
+            result.session_id,
+            step,
+            action or step,
+            outcome=result.decision,
+            reason_codes=list(result.reason_codes or []),
+        )
     return result
 
 
@@ -88,6 +104,42 @@ def face_login_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="Face login is busy right now. Please try again in a minute.")
     if not _face_login_client_limiter.allow(_client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many face login attempts. Please wait a minute and try again.")
+
+
+def _bind_step_to_document_face(
+    session_id: UUID, face_results: list, step: str
+) -> tuple[float | None, FraudSignal | None, dict[str, float | int | str | bool | None]]:
+    """Identity binding: check the live face in an interactive step against the
+    document portrait.
+
+    Without this, the pipeline only proves that *a* live human performed the
+    challenge and that *someone* matching the passport took the selfie -- so one
+    person could complete the liveness/gesture and another supply the selfie.
+    Matching every step to the same portrait binds the whole session to one
+    identity. Returns (best_score, mismatch_signal, checks).
+    """
+    reference = store.get_document_face_embedding(session_id)
+    embeddings = [result.embedding for result in face_results if result.embedding is not None]
+    if not reference or not embeddings:
+        # No portrait to compare against, or no usable face in this step. Face
+        # presence/quality is enforced separately by the caller.
+        return None, None, {f"{step}_face_match_checked": False}
+
+    best = max(face_recognizer.compare(reference, embedding) for embedding in embeddings)
+    checks: dict[str, float | int | str | bool | None] = {
+        f"{step}_face_match_checked": True,
+        f"{step}_face_match_score": round(best, 4),
+        f"{step}_face_match_threshold": LIVE_STEP_FACE_MATCH_THRESHOLD,
+    }
+    if best < LIVE_STEP_FACE_MATCH_THRESHOLD:
+        return best, _signal(
+            f"{step.upper()}_FACE_MISMATCH",
+            "The face in this step does not match the passport portrait. "
+            "The same person must complete every step of the verification.",
+            "high",
+            round(1 - best, 4),
+        ), checks
+    return best, None, checks
 
 
 def _get_session(session_id: UUID, request: Request) -> VerificationResult:
@@ -283,6 +335,10 @@ async def upload_document(
     content = await _read_upload(file)
     analysis_started_at = time.perf_counter()
     analysis = await run_in_threadpool(analyzer.analyze, content, file.filename or f"{document_type}-upload", ocr_text)
+    # Border deployments retain the evidence behind every crossing (opt-in).
+    await run_in_threadpool(
+        evidence_store.store_frames, session_id, "document", [content],
+    )
     analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
     face_started_at = time.perf_counter()
     face_result = await run_in_threadpool(face_recognizer.extract, content, "document")
@@ -304,28 +360,58 @@ async def upload_document(
         analysis.signals.extend(face_result.signals)
         if analysis.status == "passed":
             analysis.status = "rejected"
-    return _record_attempt(store.set_document(session_id, analysis), request)
+    return _record_attempt(store.set_document(session_id, analysis), request, step="document", action="document_upload")
 
 
 @router.post("/verifications/{session_id}/challenge", response_model=VerificationResult)
-async def complete_challenge(session_id: UUID, payload: CompleteChallengeRequest, request: Request) -> VerificationResult:
+async def complete_challenge(
+    session_id: UUID,
+    request: Request,
+    challenge_id: str = Form(...),
+    passed: bool = Form(...),
+    nonce: str | None = Form(default=None),
+    frames: list[UploadFile] | None = File(default=None),
+) -> VerificationResult:
     session = _get_session(session_id, request)
-    if payload.challenge_id in {challenge.id for challenge in session.active_challenges}:
+    if challenge_id in {challenge.id for challenge in session.active_challenges}:
         raise HTTPException(status_code=409, detail="Active liveness requires server-verified face evidence.")
-    target = next((c for c in session.hand_challenges if c.id == payload.challenge_id), None)
+    target = next((c for c in session.hand_challenges if c.id == challenge_id), None)
     if target is None:
         raise HTTPException(status_code=400, detail="Unknown hand-gesture challenge.")
     # Ordering: gestures can only be completed after the server-verified
     # active-liveness step has passed (cannot skip ahead via the API).
     if not session.biometric.active_liveness_passed:
         raise HTTPException(status_code=409, detail="Complete active liveness before the hand-gesture step.")
-    if not payload.passed:
+    if not passed:
         raise HTTPException(status_code=400, detail="A passed hand gesture is required.")
     # Freshness + replay protection: require the matching one-time, session-bound
     # nonce. It is consumed on success, so a captured request cannot be replayed.
-    if not target.nonce or not payload.nonce or not secrets.compare_digest(payload.nonce, target.nonce):
+    if not target.nonce or not nonce or not secrets.compare_digest(nonce, target.nonce):
         raise HTTPException(status_code=401, detail="Invalid, missing, or already-used challenge nonce.")
-    return _record_attempt(store.complete_challenge(session_id, payload), request)
+
+    # Identity binding: when the gesture frames show a face, it must be the same
+    # person as the passport portrait. The hand often occludes the face during a
+    # gesture, so an absent face is not treated as a failure -- the step is
+    # sandwiched between the identity-bound active-liveness and selfie steps.
+    if frames:
+        contents = [await _read_upload(item) for item in frames[:3]]
+        await run_in_threadpool(
+            evidence_store.store_frames, session_id, "hand_gesture", contents, label=challenge_id
+        )
+        face_results = [
+            await run_in_threadpool(face_recognizer.extract, content, "hand_gesture")
+            for content in contents
+        ]
+        _, mismatch, _checks = _bind_step_to_document_face(session_id, face_results, "hand_gesture")
+        if mismatch is not None:
+            raise HTTPException(
+                status_code=403,
+                detail="The face during the hand gesture does not match the passport portrait. "
+                       "The same person must complete every step.",
+            )
+
+    payload = CompleteChallengeRequest(challenge_id=challenge_id, passed=passed, nonce=nonce)
+    return _record_attempt(store.complete_challenge(session_id, payload), request, step="hand_gesture", action=challenge_id)
 
 
 @router.post("/verifications/{session_id}/contact/request", response_model=ContactChallengeResponse)
@@ -390,6 +476,9 @@ async def complete_active_liveness(
     liveness_files = liveness_files[:3]
     contents = [await _read_upload(item) for item in liveness_files]
 
+    await run_in_threadpool(
+        evidence_store.store_frames, session_id, "active_liveness", contents, label=challenge_id
+    )
     face_started_at = time.perf_counter()
     face_results = [
         await run_in_threadpool(face_recognizer.extract, content, "active_liveness")
@@ -418,6 +507,14 @@ async def complete_active_liveness(
         signals.append(_signal("ACTIVE_LIVENESS_FACE_CONFIDENCE_LOW", "Active liveness face confidence is too low.", "high", 0.86))
     if max_face_count > 1:
         signals.append(_signal("ACTIVE_LIVENESS_MULTIPLE_FACES", "Multiple faces detected during active liveness.", "high", 0.86))
+
+    # Bind this step to the passport portrait so a different person cannot
+    # perform the liveness challenge on the applicant's behalf.
+    _, face_match_signal, face_match_checks = _bind_step_to_document_face(
+        session_id, face_results, "active_liveness"
+    )
+    if face_match_signal is not None:
+        signals.append(face_match_signal)
 
     face_width_ratios = [
         (_float_check(result.checks, "active_liveness_face_box_width")
@@ -487,6 +584,7 @@ async def complete_active_liveness(
         "active_liveness_display_like_frame_count": display_like_frame_count,
         "active_liveness_recurring_display_surface": recurring_display_surface,
         "active_liveness_strong_replay_evidence": strong_replay_evidence,
+        **face_match_checks,
         **face_result.checks,
         **passive_result.checks,
     }
@@ -495,7 +593,7 @@ async def complete_active_liveness(
         CompleteChallengeRequest(challenge_id=challenge_id, passed=passed),
         checks,
         signals if not passed else [],
-    ), request)
+    ), request, step="active_liveness", action=challenge_id)
 
 
 @router.post("/verifications/{session_id}/selfie", response_model=VerificationResult)
@@ -516,8 +614,10 @@ async def analyze_selfie(
     reference_embedding = store.get_document_face_embedding(session_id)
     analysis_started_at = time.perf_counter()
     if len(contents) > 1:
+        await run_in_threadpool(evidence_store.store_frames, session_id, "selfie", contents)
         analysis = await run_in_threadpool(selfie_analyzer.analyze_frames, contents, filenames, reference_embedding)
     else:
+        await run_in_threadpool(evidence_store.store_frames, session_id, "selfie", contents[:1])
         analysis = await run_in_threadpool(selfie_analyzer.analyze, contents[0], filenames[0], reference_embedding)
     analysis_elapsed_ms = round((time.perf_counter() - analysis_started_at) * 1000, 2)
     representative_index = int(analysis.selfie_checks.get("selfie_burst_representative_frame") or 0)
@@ -535,7 +635,7 @@ async def analyze_selfie(
         }
     )
     store.set_selfie_face_embedding(session_id, selfie_face.embedding if analysis.passive_liveness_passed else None)
-    return _record_attempt(store.set_selfie(session_id, analysis), request)
+    return _record_attempt(store.set_selfie(session_id, analysis), request, step="selfie", action="selfie_capture")
 
 
 @router.post("/verifications/{session_id}/enroll-face", response_model=FaceEnrollmentResponse)
@@ -651,6 +751,24 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing API key. Send it in the X-API-Key header.")
 
 
+def current_admin_subject(
+    x_admin_token: str | None = Header(default=None),
+    token: str | None = Depends(oauth2_scheme),
+) -> str:
+    """Identify the operator for the evidence access log.
+
+    Falls back to the static-token identity when JWT auth is not in use, so the
+    access trail is never empty even in a single-role pilot deployment.
+    """
+    if settings.jwt_secret and token:
+        payload = auth_service.decode_token(_jwt_verify_secrets(), token)
+        if payload and payload.get("sub"):
+            return str(payload["sub"])
+    if x_admin_token:
+        return "admin-token"
+    return "unknown"
+
+
 def require_admin(
     x_admin_token: str | None = Header(default=None),
     token: str | None = Depends(oauth2_scheme),
@@ -724,6 +842,66 @@ async def read_audit_log(limit: int = 100) -> AuditListResponse:
 async def verify_audit_log() -> AuditVerifyResponse:
     result = await run_in_threadpool(audit_log.verify_chain)
     return AuditVerifyResponse(**result)
+
+
+@router.get("/evidence/{session_id}", dependencies=[Depends(require_admin)])
+async def get_session_evidence(session_id: UUID, request: Request, actor: str = Depends(current_admin_subject)) -> dict:
+    """Full evidence package for one crossing: frames, action timeline, and the
+    log of who has previously viewed it. Every call is itself access-logged."""
+    evidence_store.record_access(session_id, actor, "list", client_ip=_client_ip(request))
+    frames = evidence_store.list_frames(session_id)
+    events = evidence_store.list_events(session_id)
+    access = evidence_store.list_access(session_id)
+    return {
+        "session_id": str(session_id),
+        "frames": [
+            {
+                "id": f.id, "step": f.step, "label": f.label, "sequence": f.sequence,
+                "byte_size": f.byte_size, "encrypted": f.encrypted, "sha256": f.sha256,
+                "captured_at": f.captured_at.isoformat() if f.captured_at else None,
+                "expires_at": f.expires_at.isoformat() if f.expires_at else None,
+                "available": bool(f.path),
+            }
+            for f in frames
+        ],
+        "events": [
+            {
+                "step": e.step, "action": e.action, "outcome": e.outcome,
+                "reason_codes": json.loads(e.reason_codes) if e.reason_codes else [],
+                "duration_ms": e.duration_ms,
+                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+            }
+            for e in events
+        ],
+        "access_log": [
+            {
+                "actor": a.actor, "action": a.action, "client_ip": a.client_ip,
+                "occurred_at": a.occurred_at.isoformat() if a.occurred_at else None,
+            }
+            for a in access
+        ],
+    }
+
+
+@router.get("/evidence/frame/{frame_id}", dependencies=[Depends(require_admin)])
+async def get_evidence_frame(frame_id: str, request: Request, actor: str = Depends(current_admin_subject)):
+    """Decrypt and serve one stored frame. Viewing traveller biometric evidence
+    is always recorded, so an auditor can reconstruct who saw what."""
+    record = evidence_store.get_frame(frame_id)
+    if record is None or not record.path:
+        raise HTTPException(status_code=404, detail="Evidence frame not found or already expired.")
+    data = evidence_store.read_frame_bytes(record)
+    if data is None:
+        raise HTTPException(status_code=410, detail="Evidence frame could not be read.")
+    evidence_store.record_access(
+        record.session_id, actor, "view", frame_id=frame_id, client_ip=_client_ip(request)
+    )
+    return Response(content=data, media_type="image/jpeg")
+
+
+@router.post("/evidence/purge-expired", dependencies=[Depends(require_admin)])
+async def purge_expired_evidence() -> dict:
+    return evidence_store.purge_expired()
 
 
 @router.get("/attempts", response_model=AttemptListResponse, dependencies=[Depends(require_admin)])

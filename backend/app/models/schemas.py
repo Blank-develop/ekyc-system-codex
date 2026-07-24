@@ -79,12 +79,19 @@ class BiometricAnalysis(BaseModel):
     selfie_signals: list[FraudSignal] = Field(default_factory=list)
 
 
+class EngineMetadata(BaseModel):
+    pipeline_version: str = "unversioned"
+    decision_policy_version: str = "unversioned"
+    build_sha: str = "development"
+
+
 class VerificationResult(BaseModel):
     session_id: UUID
     user_id: str
     created_at: datetime
     updated_at: datetime
     decision: Decision = Decision.pending
+    engine: EngineMetadata = Field(default_factory=EngineMetadata)
     reason_codes: list[str] = Field(default_factory=list)
     document: DocumentAnalysis = Field(default_factory=DocumentAnalysis)
     biometric: BiometricAnalysis = Field(default_factory=BiometricAnalysis)

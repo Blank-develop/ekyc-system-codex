@@ -9,6 +9,11 @@ void main() {
       'created_at': '2026-05-13T00:00:00Z',
       'updated_at': '2026-05-13T00:01:00Z',
       'decision': 'passed',
+      'engine': {
+        'pipeline_version': 'phase1-2026.07',
+        'decision_policy_version': '2026.07-v1',
+        'build_sha': 'abc1234',
+      },
       'reason_codes': ['SELFIE_PASSED'],
       'document': {
         'status': 'passed',
@@ -56,6 +61,7 @@ void main() {
     });
 
     expect(result.decision, Decision.passed);
+    expect(result.engine?.decisionPolicyVersion, '2026.07-v1');
     expect(result.document.ocr.passportNumber, 'PA123456');
     expect(result.activeChallenges.single.type, ChallengeType.activeLiveness);
   });

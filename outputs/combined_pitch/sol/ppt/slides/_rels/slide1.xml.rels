@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="/ppt/slideLayouts/slideLayout1.xml" Id="R12cd70d8da1a4c36"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image.png" Id="Rb1258591bd5040bf"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image2.png" Id="R71d7fdd8a6c047f7"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image.svg" Id="Re60bebb2f67d4baa"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image3.png" Id="R2c3780c89642418d"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image2.svg" Id="R65a18ac485294338"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image4.png" Id="Rf90e5b0646c541dc"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image3.svg" Id="Rab9f881edd4d49e2"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image5.png" Id="R19ac7bde49fc4af7"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image4.svg" Id="Rf8dab0755923469d"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image6.png" Id="R4c94b391e65348f4"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/ppt/media/image5.svg" Id="Ra20bca22fe74449b"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="/ppt/notesSlides/notesSlide1.xml" Id="Rec4f342810b74e95"/>
+</Relationships>

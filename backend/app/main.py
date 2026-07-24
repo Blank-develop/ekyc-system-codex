@@ -59,6 +59,13 @@ def _with_timing(request, response, started_at: float):
 
 app.include_router(router, prefix=settings.api_prefix, dependencies=[Depends(require_api_key)])
 
+if settings.demo_wallet_enabled:
+    # KyronPay demo e-wallet -- see app/api/demo_wallet.py. DEMO ONLY.
+    from app.api.demo_wallet import router as demo_wallet_router
+
+    app.include_router(demo_wallet_router, prefix=settings.api_prefix, dependencies=[Depends(require_api_key)])
+    logger.warning("demo wallet enabled (LALIGENCE_DEMO_WALLET=1) -- never enable in production")
+
 
 @app.on_event("startup")
 async def warm_models_after_startup() -> None:

@@ -30,11 +30,14 @@ type LivenessMetric = {
   yaw: number;
   eyeRatio: number;
   mouthRatio: number;
+  faceWidthRatio: number;
+  faceHeightRatio: number;
+  faceTooSmall: boolean;
 };
 
 interface ActiveLivenessCaptureProps {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean>;
+  onComplete: (challenge: Challenge, allDone: boolean, evidence: Blob[]) => Promise<boolean | string>;
 }
 
 const emptyMetric: LivenessMetric = {
@@ -45,7 +48,10 @@ const emptyMetric: LivenessMetric = {
   facePresent: false,
   yaw: 0,
   eyeRatio: 0,
-  mouthRatio: 0
+  mouthRatio: 0,
+  faceWidthRatio: 0,
+  faceHeightRatio: 0,
+  faceTooSmall: false
 };
 
 const LOCAL_FACE_MESH_SOURCE = {
@@ -231,6 +237,7 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
 
   useEffect(() => {
     if (!currentChallenge || !metric.facePresent) return;
+    if (metric.faceTooSmall) return;
     if (!matchesChallenge(currentChallenge.id, metric)) return;
     if (completionLockRef.current === currentChallenge.id) return;
 
@@ -252,9 +259,9 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
       try {
         const accepted = await onComplete(currentChallenge, remainingAfterThis === 0, evidence);
         setVerifyingChallengeId(null);
-        if (!accepted) {
+        if (accepted !== true) {
           completionLockRef.current = null;
-          setError("Possible screen or replay detected. Use your real face directly in front of the camera.");
+          setError(typeof accepted === "string" ? accepted : "Live-face verification failed. Move closer, use even lighting, and try the action again.");
         }
       } catch (error) {
         setVerifyingChallengeId(null);
@@ -339,7 +346,7 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
           {cameraReady && (
             <div className="liveness-status-pill active-liveness-fullscreen-status">
               <ScanFace size={16} />
-              {metric.facePresent ? "Face detected" : "Center your face"}
+              {metric.facePresent ? metric.faceTooSmall ? "Move closer" : "Face ready" : "Center your face"}
             </div>
           )}
           {verifyingChallengeId && (
@@ -352,6 +359,11 @@ export function ActiveLivenessCapture({ challenges, onComplete }: ActiveLiveness
           {!verifyingChallengeId && lightingStatus?.level === "warning" && (
             <div className="camera-lighting-warning active-liveness-fullscreen-lighting" role="status" aria-live="polite">
               {lightingStatus.message}
+            </div>
+          )}
+          {!verifyingChallengeId && metric.facePresent && metric.faceTooSmall && (
+            <div className="camera-distance-warning" role="status" aria-live="polite">
+              Move closer to the camera. Keep your full face visible and let it fill about one-third of the screen before performing the action.
             </div>
           )}
           {renderCompactActions(true)}
@@ -500,6 +512,11 @@ function readLivenessMetric(landmarks: NormalizedLandmarkList): LivenessMetric {
   const faceWidth = Math.max(distance(landmarks[234], landmarks[454]), 0.001);
   const faceCenterX = (landmarks[234].x + landmarks[454].x) / 2;
   const yaw = (landmarks[1].x - faceCenterX) / faceWidth;
+  const xs = landmarks.map((landmark) => landmark.x);
+  const ys = landmarks.map((landmark) => landmark.y);
+  const faceWidthRatio = Math.max(...xs) - Math.min(...xs);
+  const faceHeightRatio = Math.max(...ys) - Math.min(...ys);
+  const faceTooSmall = faceWidthRatio < 0.24 || faceHeightRatio < 0.3;
 
   return {
     blink: averageEyeRatio < 0.18,
@@ -511,7 +528,10 @@ function readLivenessMetric(landmarks: NormalizedLandmarkList): LivenessMetric {
     facePresent: true,
     yaw,
     eyeRatio: averageEyeRatio,
-    mouthRatio
+    mouthRatio,
+    faceWidthRatio,
+    faceHeightRatio,
+    faceTooSmall
   };
 }
 

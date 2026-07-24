@@ -1,0 +1,233 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-12T03:03:53.868850+00:00",
+  "gate_status": "passed",
+  "release": {
+    "git_commit": "e37884b620b2481f8da95be8a0613996af0aaa58",
+    "git_dirty": true,
+    "pipeline_version": "phase1-2026.07",
+    "decision_policy_version": "2026.07-v1",
+    "build_sha": "e37884b"
+  },
+  "environment": {
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.3",
+    "node": "v25.9.0",
+    "npm": "11.12.1"
+  },
+  "checks": [
+    {
+      "name": "backend_compile",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 0.046,
+      "command": [
+        "/Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/.venv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "backend/app"
+      ],
+      "output_tail": ""
+    },
+    {
+      "name": "backend_tests",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 11.71,
+      "command": [
+        "/Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/.venv/bin/python",
+        "-m",
+        "pytest",
+        "backend/tests",
+        "-q"
+      ],
+      "output_tail": "........................................................................ [ 40%]\n........................................................................ [ 81%]\n................................                                         [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.14/site-packages/fastapi/testclient.py:1\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\nbackend/app/main.py:63\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/main.py:63: DeprecationWarning: \n          on_event is deprecated, use lifespan event handlers instead.\n  \n          Read more about it in the\n          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).\n          \n    @app.on_event(\"startup\")\n\n.venv/lib/python3.14/site-packages/fastapi/applications.py:4675\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/.venv/lib/python3.14/site-packages/fastapi/applications.py:4675: DeprecationWarning: \n          on_event is deprecated, use lifespan event handlers instead.\n  \n          Read more about it in the\n          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).\n          \n    return self.router.on_event(event_type)  # ty: ignore[deprecated]\n\nbackend/tests/test_fraud.py: 16 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/fraud.py:466: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    pixels = hsv.getdata()\n\nbackend/tests/test_fraud.py: 16 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/fraud.py:1517: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    data = list(gray.getdata())\n\nbackend/tests/test_fraud.py: 16 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/fraud.py:1539: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    pixels = hsv.getdata()\n\nbackend/tests/test_fraud.py: 14 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/document_models.py:210: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    pixels = list(hsv.getdata())\n\nbackend/tests/test_fraud.py: 12 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/document_models.py:328: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    hsv_pixels = list(hsv.getdata())\n\nbackend/tests/test_fraud.py: 12 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/document_models.py:329: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    rgb_pixels = list(image.getdata())\n\nbackend/tests/test_selfie.py: 66 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/selfie.py:404: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    for red, green, blue in crop.getdata():\n\nbackend/tests/test_selfie.py: 66 warnings\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/selfie.py:414: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    for _, sat, val in hsv.getdata():\n\nbackend/tests/test_selfie.py::test_passive_spoof_detects_phone_screen_frame\nbackend/tests/test_selfie.py::test_passive_spoof_detects_held_phone_screen_with_visible_fingers\nbackend/tests/test_selfie.py::test_passive_spoof_detects_tablet_screen_surface_when_frame_is_clipped\nbackend/tests/test_selfie.py::test_passive_spoof_detects_printed_photo_paper\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/face_biometrics.py:412: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    glare = sum(1 for _, sat, val in hsv.getdata() if val >= 244 and sat <= 38)\n\nbackend/tests/test_selfie.py::test_passive_spoof_detects_phone_screen_frame\nbackend/tests/test_selfie.py::test_passive_spoof_detects_held_phone_screen_with_visible_fingers\nbackend/tests/test_selfie.py::test_passive_spoof_detects_tablet_screen_surface_when_frame_is_clipped\nbackend/tests/test_selfie.py::test_passive_spoof_detects_printed_photo_paper\n  /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/backend/app/services/face_biometrics.py:419: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.\n    extreme = sum(1 for _, sat, val in hsv.getdata() if sat > 225 or val < 10)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n176 passed, 229 warnings in 11.24s\n"
+    },
+    {
+      "name": "frontend_build",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 1.69,
+      "command": [
+        "npm",
+        "--prefix",
+        "frontend",
+        "run",
+        "build"
+      ],
+      "output_tail": "\n> @laligence/ekyc-web@0.1.0 build\n> tsc -p tsconfig.json && vite build\n\nvite v8.1.2 building client environment for production...\n\u001b[2K\ntransforming...\u2713 62 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                   0.52 kB \u2502 gzip:  0.30 kB\ndist/assets/logo-D_Wto9t9.png   677.45 kB\ndist/assets/index-Bsiyp7_h.css   53.33 kB \u2502 gzip: 10.93 kB\ndist/assets/index-JwBdFKjt.js   279.55 kB \u2502 gzip: 83.92 kB\n\n\u2713 built in 177ms\n"
+    },
+    {
+      "name": "typescript_sdk",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 0.494,
+      "command": [
+        "npm",
+        "--prefix",
+        "sdk/typescript",
+        "run",
+        "typecheck"
+      ],
+      "output_tail": "\n> @laligence/ekyc-sdk@0.1.0 typecheck\n> tsc -p tsconfig.json --noEmit\n\n"
+    },
+    {
+      "name": "flutter_sdk",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 1.21,
+      "command": [
+        "flutter",
+        "test"
+      ],
+      "output_tail": "00:00 +0: loading /Users/chilanhouthnitvongkhay/Downloads/ekyc-system-codex/sdk/flutter/test/models_test.dart\n00:00 +0: parses verification result contract\n00:00 +1: All tests passed!\n"
+    }
+  ],
+  "dataset_inventory": {
+    "document_print_copy": {
+      "path": "test_dataset/document_print_copy",
+      "total_images": 20,
+      "classes": {
+        "fake_photocopy_or_scan": 0,
+        "fake_printed_lao_id_on_paper": 3,
+        "fake_printed_passport_on_paper": 7,
+        "fake_screen_display": 0,
+        "real_camera_lao_id": 5,
+        "real_camera_passport": 5,
+        "uncertain_review": 0
+      },
+      "readiness": "incomplete"
+    },
+    "active_liveness": {
+      "path": "test_dataset/active_liveness",
+      "total_images": 261,
+      "classes": {
+        "fake_laptop_screen_replay": 0,
+        "fake_phone_screen_replay": 50,
+        "fake_printed_photo": 120,
+        "fake_tablet_screen_replay": 0,
+        "fake_video_replay_closeup": 0,
+        "real_live_face": 30,
+        "real_live_face_with_glasses": 30,
+        "real_live_poor_lighting": 31,
+        "uncertain_review": 0
+      },
+      "readiness": "incomplete"
+    },
+    "selfie_passive_liveness": {
+      "path": "test_dataset/selfie_passive_liveness_face_login",
+      "total_images": 102,
+      "classes": {
+        "fake_cutout_or_paper_mask": 0,
+        "fake_phone_screen_photo": 31,
+        "fake_printed_photo": 17,
+        "fake_tablet_laptop_screen": 0,
+        "fake_video_replay": 0,
+        "multiple_faces": 0,
+        "no_valid_face": 18,
+        "real_live_match": 36,
+        "real_live_nonmatch": 0,
+        "real_live_poor_quality": 0,
+        "uncertain_review": 0
+      },
+      "readiness": "incomplete"
+    },
+    "face_login": {
+      "path": "test_dataset/face_login",
+      "total_images": 0,
+      "classes": {
+        "enrolled_printed_photo": 0,
+        "enrolled_real_live": 0,
+        "enrolled_screen_replay": 0,
+        "multiple_faces": 0,
+        "no_valid_face": 0,
+        "uncertain_review": 0,
+        "unknown_real_live": 0,
+        "unknown_screen_replay": 0
+      },
+      "readiness": "incomplete"
+    },
+    "face_matching": {
+      "path": "test_dataset/face_matching",
+      "total_images": 280,
+      "classes": {
+        "Abdullah_Gul": 4,
+        "Alejandro_Toledo": 4,
+        "Alvaro_Uribe": 4,
+        "Amelie_Mauresmo": 4,
+        "Andre_Agassi": 4,
+        "Angelina_Jolie": 4,
+        "Ariel_Sharon": 4,
+        "Arnold_Schwarzenegger": 4,
+        "Atal_Bihari_Vajpayee": 4,
+        "Bill_Clinton": 4,
+        "Carlos_Menem": 4,
+        "Carlos_Moya": 4,
+        "Colin_Powell": 4,
+        "David_Beckham": 4,
+        "Donald_Rumsfeld": 4,
+        "George_Robertson": 4,
+        "George_W_Bush": 4,
+        "Gerhard_Schroeder": 4,
+        "Gloria_Macapagal_Arroyo": 4,
+        "Gray_Davis": 4,
+        "Guillermo_Coria": 4,
+        "Hamid_Karzai": 4,
+        "Hans_Blix": 4,
+        "Hugo_Chavez": 4,
+        "Igor_Ivanov": 4,
+        "Jack_Straw": 4,
+        "Jacques_Chirac": 4,
+        "Jean_Chretien": 4,
+        "Jennifer_Aniston": 4,
+        "Jennifer_Capriati": 4,
+        "Jennifer_Lopez": 4,
+        "Jeremy_Greenstock": 4,
+        "Jiang_Zemin": 4,
+        "John_Ashcroft": 4,
+        "John_Howard": 4,
+        "John_Negroponte": 4,
+        "Joschka_Fischer": 4,
+        "Jose_Maria_Aznar": 4,
+        "Juan_Carlos_Ferrero": 4,
+        "Julianne_Moore": 4,
+        "Junichiro_Koizumi": 4,
+        "Kofi_Annan": 4,
+        "Laura_Bush": 4,
+        "Lindsay_Davenport": 4,
+        "Lleyton_Hewitt": 4,
+        "Luiz_Inacio_Lula_da_Silva": 4,
+        "Mahmoud_Abbas": 4,
+        "Megawati_Sukarnoputri": 4,
+        "Michael_Bloomberg": 4,
+        "Michael_Schumacher": 4,
+        "Naomi_Watts": 4,
+        "Nestor_Kirchner": 4,
+        "Nicole_Kidman": 4,
+        "Paul_Bremer": 4,
+        "Pete_Sampras": 4,
+        "Recep_Tayyip_Erdogan": 4,
+        "Ricardo_Lagos": 4,
+        "Roh_Moo-hyun": 4,
+        "Rudolph_Giuliani": 4,
+        "Saddam_Hussein": 4,
+        "Serena_Williams": 4,
+        "Silvio_Berlusconi": 4,
+        "Tiger_Woods": 4,
+        "Tim_Henman": 4,
+        "Tom_Daschle": 4,
+        "Tom_Ridge": 4,
+        "Tony_Blair": 4,
+        "Vicente_Fox": 4,
+        "Vladimir_Putin": 4,
+        "Winona_Ryder": 4
+      },
+      "readiness": "present"
+    }
+  },
+  "notes": [
+    "Dataset readiness is advisory in milestone 1 and does not change gate_status.",
+    "A passing gate is not evidence of NIST, ISO, PAD, or regulatory certification."
+  ]
+}

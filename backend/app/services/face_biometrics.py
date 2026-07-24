@@ -90,9 +90,8 @@ class OpenCvFaceRecognizer:
         cv2 = self._cv2
         assert cv2 is not None and self._detector is not None and self._recognizer is not None
         frame = self._pil_to_bgr(image)
+        frame, faces, rotation_degrees = self._detect_with_document_orientation_retry(frame, source)
         height, width = frame.shape[:2]
-        self._detector.setInputSize((width, height))
-        _, faces = self._detector.detect(frame)
         if faces is None or len(faces) == 0:
             return FaceEmbeddingResult(
                 embedding=None,
@@ -102,6 +101,7 @@ class OpenCvFaceRecognizer:
                 checks={
                     f"{source}_face_model": "opencv_sface",
                     f"{source}_face_detected": False,
+                    f"{source}_face_rotation_degrees": rotation_degrees,
                     f"{source}_image_width": width,
                     f"{source}_image_height": height,
                 },
@@ -140,11 +140,51 @@ class OpenCvFaceRecognizer:
                 f"{source}_face_box_width": w,
                 f"{source}_face_box_height": h,
                 f"{source}_face_area_ratio": round(area_ratio, 4),
+                f"{source}_face_rotation_degrees": rotation_degrees,
                 f"{source}_image_width": width,
                 f"{source}_image_height": height,
             },
             signals=signals,
         )
+
+    def _detect_with_document_orientation_retry(self, frame: Any, source: str) -> tuple[Any, Any, int]:
+        """Retry pixel rotations for document photos without EXIF orientation."""
+        cv2 = self._cv2
+        assert cv2 is not None and self._detector is not None
+
+        def detect(candidate: Any) -> Any:
+            height, width = candidate.shape[:2]
+            self._detector.setInputSize((width, height))
+            _, detected = self._detector.detect(candidate)
+            return detected
+
+        faces = detect(frame)
+        if source != "document" or (faces is not None and len(faces) > 0):
+            return frame, faces, 0
+
+        rotations = (
+            (90, cv2.ROTATE_90_COUNTERCLOCKWISE),
+            (180, cv2.ROTATE_180),
+            (270, cv2.ROTATE_90_CLOCKWISE),
+        )
+        best: tuple[float, Any, Any, int] | None = None
+        for degrees, rotation_code in rotations:
+            candidate = cv2.rotate(frame, rotation_code)
+            detected = detect(candidate)
+            if detected is None or len(detected) == 0:
+                continue
+            height, width = candidate.shape[:2]
+            selected = self._select_face(detected, width, height, source)
+            area_ratio = float(selected[2] * selected[3]) / max(width * height, 1)
+            score = float(selected[-1]) + min(area_ratio, 0.25)
+            result = (score, candidate, detected, degrees)
+            if best is None or result[0] > best[0]:
+                best = result
+
+        if best is None:
+            return frame, faces, 0
+        _, candidate, detected, degrees = best
+        return candidate, detected, degrees
 
     def compare(self, embedding_a: list[float] | None, embedding_b: list[float] | None) -> float:
         if not embedding_a or not embedding_b or len(embedding_a) != len(embedding_b):

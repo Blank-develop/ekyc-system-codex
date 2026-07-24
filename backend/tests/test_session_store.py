@@ -34,3 +34,11 @@ def test_create_session_uses_easy_weighted_hand_challenges() -> None:
         assert len(result.hand_challenges) == 3
         tricky = [c for c in result.hand_challenges if c.id in TRICKY_HAND_GESTURE_IDS]
         assert len(tricky) <= 1
+
+
+def test_create_session_records_engine_versions() -> None:
+    result = VerificationStore().create("user-versioned")
+
+    assert result.engine.pipeline_version != "unversioned"
+    assert result.engine.decision_policy_version != "unversioned"
+    assert result.engine.build_sha

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="/ppt/theme/theme1.xml" Id="Rbe949ca9a9a34a25"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="/ppt/slideMasters/slideMaster1.xml" Id="R54005b30a67e4052"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="/ppt/notesMasters/notesMaster1.xml" Id="Rfc89a11499344c41"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/presProps" Target="/ppt/presProps.xml" Id="Rb0d28630371b49e0"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/viewProps" Target="/ppt/viewProps.xml" Id="R1ca2e8e7b1044d54"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles" Target="/ppt/tableStyles.xml" Id="R1b906708598f4fae"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide1.xml" Id="R46a054108eaf42bb"/>
+  <Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide2.xml" Id="R45864d47387c498b"/>
+<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide3.xml" Id="Rslide3"/><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide4.xml" Id="Rslide4"/><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide5.xml" Id="Rslide5"/><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="/ppt/slides/slide6.xml" Id="Rslide6"/></Relationships>

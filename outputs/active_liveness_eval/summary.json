@@ -1,0 +1,11 @@
+[
+  {
+    "folder": "fake_phone_screen_replay",
+    "expected": "spoof",
+    "total_bursts": 17,
+    "detected_as_spoof": 17,
+    "missed_as_live": 0,
+    "detection_rate": 1.0,
+    "false_accept_rate": 0.0
+  }
+]

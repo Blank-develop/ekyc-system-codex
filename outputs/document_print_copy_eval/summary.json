@@ -1,0 +1,92 @@
+{
+  "total_images": 20,
+  "accuracy": 0.55,
+  "real_images": 10,
+  "fake_images": 10,
+  "false_rejects": 7,
+  "false_accepts": 2,
+  "printed_copy_high_detection_rate": 0.3,
+  "misclassified": [
+    {
+      "folder": "real_camera_passport",
+      "filename": "Screenshot 2026-05-24 at 23.04.24.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.039,
+      "signals": "MRZ_CHECK_DIGIT_MISMATCH"
+    },
+    {
+      "folder": "real_camera_passport",
+      "filename": "Screenshot 2026-05-24 at 23.05.08.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.033,
+      "signals": "MRZ_NOT_READ"
+    },
+    {
+      "folder": "real_camera_lao_id",
+      "filename": "Screenshot 2026-05-24 at 23.04.12.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.047,
+      "signals": "LAO_ID_NOT_RECOGNIZED|LAO_ID_NUMBER_NOT_READ"
+    },
+    {
+      "folder": "real_camera_lao_id",
+      "filename": "Screenshot 2026-05-24 at 23.04.35.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.027,
+      "signals": "LAO_ID_NOT_RECOGNIZED|LAO_ID_NUMBER_NOT_READ"
+    },
+    {
+      "folder": "real_camera_lao_id",
+      "filename": "Screenshot 2026-05-24 at 23.04.46.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.053,
+      "signals": "LAO_ID_TEXT_WEAK|LAO_ID_NUMBER_NOT_READ"
+    },
+    {
+      "folder": "real_camera_lao_id",
+      "filename": "Screenshot 2026-05-24 at 23.05.36.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.052,
+      "signals": "LAO_ID_TEXT_WEAK|LAO_ID_NUMBER_NOT_READ"
+    },
+    {
+      "folder": "real_camera_lao_id",
+      "filename": "Screenshot 2026-05-24 at 23.05.52.png",
+      "expected": "real",
+      "predicted": "fake",
+      "status": "rejected",
+      "print_copy_score": 0.055,
+      "signals": "LAO_ID_NOT_RECOGNIZED|LAO_ID_NUMBER_NOT_READ"
+    },
+    {
+      "folder": "fake_printed_passport_on_paper",
+      "filename": "Screenshot 2026-05-24 at 22.55.36.png",
+      "expected": "fake",
+      "predicted": "real",
+      "status": "passed",
+      "print_copy_score": 0.043,
+      "signals": "MRZ_NOT_CONFIDENT"
+    },
+    {
+      "folder": "fake_printed_passport_on_paper",
+      "filename": "Screenshot 2026-05-24 at 23.03.30.png",
+      "expected": "fake",
+      "predicted": "real",
+      "status": "passed",
+      "print_copy_score": 0.043,
+      "signals": "MRZ_NOT_CONFIDENT"
+    }
+  ]
+}
