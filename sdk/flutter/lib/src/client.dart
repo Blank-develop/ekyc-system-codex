@@ -53,6 +53,7 @@ class EkycClient {
   final http.Client _httpClient;
   final Duration defaultTimeout;
   final int defaultRetries;
+  final Map<String, String> _sessionTokens = {};
 
   Future<VerificationResult> createVerification(
     String userId, {
@@ -66,7 +67,11 @@ class EkycClient {
       retries: retries,
       timeout: timeout,
     );
-    return VerificationResult.fromJson(json);
+    final result = VerificationResult.fromJson(json);
+    if (result.sessionToken != null) {
+      _sessionTokens[result.sessionId] = result.sessionToken!;
+    }
+    return result;
   }
 
   Future<VerificationResult> getVerification(
@@ -77,6 +82,7 @@ class EkycClient {
     final json = await _requestJson(
       'GET',
       '/api/verifications/$sessionId',
+      headers: _sessionHeaders(sessionId),
       retries: retries,
       timeout: timeout,
     );
@@ -96,6 +102,7 @@ class EkycClient {
       '/api/verifications/$sessionId/document',
       image,
       fields: fields,
+      headers: _sessionHeaders(sessionId),
       retries: retries,
       timeout: timeout,
     );
@@ -105,6 +112,7 @@ class EkycClient {
   Future<VerificationResult> completeChallenge(
     String sessionId,
     String challengeId, {
+    String? nonce,
     bool passed = true,
     int retries = 2,
     Duration? timeout,
@@ -112,10 +120,48 @@ class EkycClient {
     final json = await _requestJson(
       'POST',
       '/api/verifications/$sessionId/challenge',
-      body: {'challenge_id': challengeId, 'passed': passed},
+      body: {
+        'challenge_id': challengeId,
+        'passed': passed,
+        if (nonce != null) 'nonce': nonce,
+      },
+      headers: _sessionHeaders(sessionId),
       retries: retries,
       timeout: timeout,
     );
+    return VerificationResult.fromJson(json);
+  }
+
+  Future<VerificationResult> completeActiveLiveness(
+    String sessionId,
+    String challengeId,
+    List<EkycUpload> frames, {
+    int retries = 2,
+    Duration timeout = const Duration(seconds: 90),
+  }) async {
+    if (frames.isEmpty) {
+      throw ArgumentError(
+        'completeActiveLiveness requires at least one frame.',
+      );
+    }
+    final json = await _withRetry(() async {
+      final request = http.MultipartRequest(
+        'POST',
+        _url('/api/verifications/$sessionId/active-liveness'),
+      );
+      request.headers
+        ..['Accept'] = 'application/json'
+        ..addAll(_sessionHeaders(sessionId));
+      request.fields['challenge_id'] = challengeId;
+      for (final frame in frames.take(3)) {
+        request.files.add(await _multipartFile(frame, field: 'frames'));
+      }
+      final response = await _httpClient
+          .send(request)
+          .timeout(timeout)
+          .then(http.Response.fromStream);
+      return _parseResponse(response);
+    }, retries: retries);
     return VerificationResult.fromJson(json);
   }
 
@@ -129,6 +175,7 @@ class EkycClient {
       'POST',
       '/api/verifications/$sessionId/selfie',
       image,
+      headers: _sessionHeaders(sessionId),
       retries: retries,
       timeout: timeout,
     );
@@ -143,6 +190,7 @@ class EkycClient {
     final json = await _requestJson(
       'POST',
       '/api/verifications/$sessionId/enroll-face',
+      headers: _sessionHeaders(sessionId),
       retries: retries,
       timeout: timeout,
     );
@@ -161,6 +209,33 @@ class EkycClient {
       retries: retries,
       timeout: timeout,
     );
+    return FaceLoginResponse.fromJson(json);
+  }
+
+  /// Face login with a short burst of frames (up to 6). The backend compares
+  /// frame-to-frame motion and lighting, making screen-replay attacks much
+  /// harder than a single still image. Prefer this over [faceLogin] whenever
+  /// the integration can capture a burst.
+  Future<FaceLoginResponse> faceLoginBurst(
+    List<EkycUpload> frames, {
+    int retries = 2,
+    Duration timeout = const Duration(seconds: 90),
+  }) async {
+    if (frames.isEmpty) {
+      throw ArgumentError('faceLoginBurst requires at least one frame.');
+    }
+    final json = await _withRetry(() async {
+      final request = http.MultipartRequest('POST', _url('/api/face-login'));
+      request.headers['Accept'] = 'application/json';
+      for (final frame in frames.take(6)) {
+        request.files.add(await _multipartFile(frame, field: 'frames'));
+      }
+      final response = await _httpClient
+          .send(request)
+          .timeout(timeout)
+          .then(http.Response.fromStream);
+      return _parseResponse(response);
+    }, retries: retries);
     return FaceLoginResponse.fromJson(json);
   }
 
@@ -212,12 +287,14 @@ class EkycClient {
     String method,
     String path, {
     Map<String, Object?>? body,
+    Map<String, String>? headers,
     int? retries,
     Duration? timeout,
   }) async {
     return _withRetry(() async {
       final request = http.Request(method, _url(path));
       request.headers['Accept'] = 'application/json';
+      if (headers != null) request.headers.addAll(headers);
       if (body != null) {
         request.headers['Content-Type'] = 'application/json';
         request.body = jsonEncode(body);
@@ -235,12 +312,14 @@ class EkycClient {
     String path,
     EkycUpload upload, {
     Map<String, String>? fields,
+    Map<String, String>? headers,
     int? retries,
     Duration? timeout,
   }) async {
     return _withRetry(() async {
       final request = http.MultipartRequest(method, _url(path));
       request.headers['Accept'] = 'application/json';
+      if (headers != null) request.headers.addAll(headers);
       if (fields != null) request.fields.addAll(fields);
       request.files.add(await _multipartFile(upload));
       final response = await _httpClient
@@ -273,11 +352,14 @@ class EkycClient {
     throw lastError ?? StateError('eKYC request failed.');
   }
 
-  Future<http.MultipartFile> _multipartFile(EkycUpload upload) {
+  Future<http.MultipartFile> _multipartFile(
+    EkycUpload upload, {
+    String field = 'file',
+  }) {
     final contentType = MediaType.parse(upload.contentType);
     if (upload.path != null) {
       return http.MultipartFile.fromPath(
-        'file',
+        field,
         upload.path!,
         filename: upload.filename,
         contentType: contentType,
@@ -289,7 +371,7 @@ class EkycClient {
     }
     return Future.value(
       http.MultipartFile.fromBytes(
-        'file',
+        field,
         bytes,
         filename: upload.filename,
         contentType: contentType,
@@ -299,6 +381,11 @@ class EkycClient {
 
   Uri _url(String path) {
     return _baseUri.replace(path: _joinPath(_baseUri.path, path));
+  }
+
+  Map<String, String> _sessionHeaders(String sessionId) {
+    final token = _sessionTokens[sessionId];
+    return token == null ? const {} : {'X-Session-Token': token};
   }
 }
 

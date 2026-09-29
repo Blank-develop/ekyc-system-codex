@@ -45,6 +45,9 @@ def _str_env(name: str, default: str) -> str:
 class Settings(BaseModel):
     app_name: str = "LALIGENCE eKYC API"
     api_prefix: str = "/api"
+    pipeline_version: str = _str_env("LALIGENCE_PIPELINE_VERSION", "phase1-2026.07")
+    decision_policy_version: str = _str_env("LALIGENCE_DECISION_POLICY_VERSION", "2026.07-v1")
+    build_sha: str = _str_env("LALIGENCE_BUILD_SHA", _str_env("RENDER_GIT_COMMIT", "development"))
     database_url: str = _str_env("DATABASE_URL", "sqlite:///backend/data/laligence_profiles.sqlite3")
     min_face_match_score: float = _float_env("LALIGENCE_MIN_FACE_MATCH_SCORE", 0.68)
     max_passive_liveness_risk: float = _float_env("LALIGENCE_MAX_PASSIVE_LIVENESS_RISK", 0.34)
@@ -59,6 +62,13 @@ class Settings(BaseModel):
         ("http://localhost:5173", "http://127.0.0.1:5173"),
     )
     frontend_dist: str = _str_env("LALIGENCE_FRONTEND_DIST", "")
+    # KyronPay demo e-wallet (examples/epay_demo). DEMO ONLY: mounts an
+    # unauthenticated toy ledger under /api/demo-wallet so a fintech customer
+    # integration can be exercised end to end. Never enable in production.
+    demo_wallet_enabled: bool = _bool_env("LALIGENCE_DEMO_WALLET", False)
+    demo_wallet_initial_cents: int = _int_env("LALIGENCE_DEMO_WALLET_INITIAL_CENTS", 100_000)
+    demo_wallet_currency: str = _str_env("LALIGENCE_DEMO_WALLET_CURRENCY", "USD")
+    demo_wallet_path: str = _str_env("LALIGENCE_DEMO_WALLET_PATH", "")
     # Session security: verification sessions are short-lived and client-bound.
     # Idle timeout (since last activity) and an absolute cap (since creation); a
     # per-session token issued at creation must be presented (X-Session-Token) on
@@ -121,6 +131,35 @@ class Settings(BaseModel):
     # Retention for the verification-attempts admin log (session outcomes, no PII/
     # biometrics). 0 = retain indefinitely (demo default).
     attempt_retention_days: int = _int_env("LALIGENCE_ATTEMPT_RETENTION_DAYS", 0)
+    # --- Evidence capture (border / immigration deployments) -------------------
+    # OFF by default: the standard product keeps its no-raw-image-retention
+    # property. Border deployments operating under statutory authority enable
+    # this to retain the frames behind each crossing for review and audit.
+    evidence_enabled: bool = _bool_env("LALIGENCE_EVIDENCE_ENABLED", False)
+    evidence_root: str = _str_env("LALIGENCE_EVIDENCE_ROOT", "evidence")
+    # 5 years (1825 days) matches typical immigration record-keeping mandates.
+    # Frames expire; the crossing metadata/audit row is kept unless purged too.
+    evidence_retention_days: int = _int_env("LALIGENCE_EVIDENCE_RETENTION_DAYS", 1825)
+    evidence_purge_metadata: bool = _bool_env("LALIGENCE_EVIDENCE_PURGE_METADATA", False)
+    # Frames are downscaled/compressed on write: at ~500 crossings/day this keeps
+    # a 5-year archive near 1.4 TB instead of several times that.
+    evidence_max_frame_px: int = _int_env("LALIGENCE_EVIDENCE_MAX_FRAME_PX", 1280)
+    evidence_jpeg_quality: int = _int_env("LALIGENCE_EVIDENCE_JPEG_QUALITY", 80)
+    # --- Watchlist ("blacklist") screening (border / immigration) -------------
+    # OFF by default. When enabled, each document read is screened against the
+    # government-supplied watchlist (biographic leg: passport number + name/DOB)
+    # and a hit raises an officer alert. Name matches must clear this similarity
+    # ratio (0-1); a corroborating date of birth is required unless the name is
+    # near-exact, keeping false positives (which accuse innocent travellers) low.
+    watchlist_enabled: bool = _bool_env("LALIGENCE_WATCHLIST_ENABLED", False)
+    watchlist_name_similarity: float = _float_env("LALIGENCE_WATCHLIST_NAME_SIMILARITY", 0.85)
+    # Face (biometric) leg. A 1:N cosine similarity (mapped to 0-1, same scale as
+    # the selfie<->document match) at or above this raises a face alert. Set well
+    # above the 1:1 pass point (~0.68) because a false face hit accuses an
+    # innocent traveller; officers always confirm via side-by-side, never auto-deny.
+    watchlist_face_threshold: float = _float_env("LALIGENCE_WATCHLIST_FACE_THRESHOLD", 0.75)
+    # Where encrypted watchlist enrolment photos and probe images are kept.
+    watchlist_root: str = _str_env("LALIGENCE_WATCHLIST_ROOT", "watchlist")
     # Tamper-evident audit log (hash-chained). Keyed with a key derived from
     # LALIGENCE_ENCRYPTION_KEY when set. On by default; records auth, PII access,
     # admin actions, and identity enrollment/decisions (no raw PII/biometrics).

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 794px; height: 1123px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #f6f8fc; color: #081632;
+    display: flex; flex-direction: column;
+  }
+  header {
+    background: #081632; color: white;
+    padding: 26px 36px 22px; border-bottom: 4px solid #d9ae27;
+  }
+  header h1 { font-size: 24px; font-weight: 700; }
+  header p { margin-top: 6px; font-size: 12.5px; color: #c6cfe3; }
+  header .brand { font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; color: #d9ae27; margin-bottom: 8px; }
+  main { padding: 22px 36px 0; }
+  .section-label {
+    font-size: 11.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #10255a; margin: 14px 0 8px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .card {
+    display: flex; align-items: center; gap: 9px;
+    background: white; border: 1px solid #dbe2ef; border-radius: 8px;
+    padding: 9px 10px; min-height: 56px;
+  }
+  .visual {
+    flex: none; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    background: #f6f8fc; border: 1px solid #dbe2ef; border-radius: 8px;
+    font-size: 19px; font-weight: 700;
+  }
+  .card strong { display: block; font-size: 12.5px; }
+  .card small { display: block; font-size: 10.5px; color: #5a6478; line-height: 1.35; margin-top: 2px; }
+  footer {
+    margin: 18px 36px 0; padding: 14px 18px 16px; margin-bottom: 26px;
+    background: white; border: 1px solid #dbe2ef; border-left: 4px solid #d9ae27; border-radius: 0 8px 8px 0;
+  }
+  footer h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: #10255a; margin-bottom: 6px; }
+  footer li { font-size: 11.5px; color: #5a6478; line-height: 1.6; margin-left: 16px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">Kyron eKYC</div>
+    <h1>Hand gesture guide</h1>
+    <p>Every gesture used in the verification challenge, with simple instructions.</p>
+  </header>
+  <main><p class="section-label">Counting gestures — easy</p><div class="grid"><div class="card"><span class="visual">1️⃣</span><div><strong>Show 1</strong><small>Raise one finger.</small></div></div><div class="card"><span class="visual">2️⃣</span><div><strong>Show 2</strong><small>Raise two fingers.</small></div></div><div class="card"><span class="visual">3️⃣</span><div><strong>Show 3</strong><small>Raise three fingers.</small></div></div><div class="card"><span class="visual">4️⃣</span><div><strong>Show 4</strong><small>Raise four fingers.</small></div></div><div class="card"><span class="visual">5️⃣</span><div><strong>Show 5</strong><small>All five fingers, open hand.</small></div></div><div class="card"><span class="visual">☝️</span><div><strong>Point up</strong><small>Point one finger up.</small></div></div><div class="card"><span class="visual">✌️</span><div><strong>Peace / victory</strong><small>Index and middle finger in a V.</small></div></div></div><p class="section-label">Palm and fist — easy</p><div class="grid"><div class="card"><span class="visual">✋</span><div><strong>Open palm / stop</strong><small>Open hand, fingers spread.</small></div></div><div class="card"><span class="visual">🖐️</span><div><strong>High five</strong><small>Open hand like a high five.</small></div></div><div class="card"><span class="visual">✊</span><div><strong>Fist</strong><small>Close your hand into a fist.</small></div></div></div><p class="section-label">Thumb and pinch — easy</p><div class="grid"><div class="card"><span class="visual">👍</span><div><strong>Thumb up</strong><small>Make a fist, point your thumb up.</small></div></div><div class="card"><span class="visual">👌</span><div><strong>OK / pinch</strong><small>Thumb and index fingertip in a ring.</small></div></div><div class="card"><span class="visual">🤌</span><div><strong>Pinched fingers</strong><small>All fingertips together, pointing up.</small></div></div><div class="card"><span class="visual">L</span><div><strong>L shape</strong><small>Thumb and index finger form an L.</small></div></div></div><p class="section-label">Trickier — at most one per session</p><div class="grid"><div class="card"><span class="visual">👎</span><div><strong>Thumb down</strong><small>Make a fist, point your thumb down.</small></div></div><div class="card"><span class="visual">🤘</span><div><strong>Rock on</strong><small>Raise index and pinky fingers.</small></div></div><div class="card"><span class="visual">🤟</span><div><strong>I love you</strong><small>Raise thumb, index, and pinky.</small></div></div><div class="card"><span class="visual">🤙</span><div><strong>Call me</strong><small>Extend thumb and pinky.</small></div></div><div class="card"><span class="visual">🤞</span><div><strong>Crossed fingers</strong><small>Cross index over middle finger.</small></div></div></div></main>
+  <footer>
+    <h2>How the challenge works</h2>
+    <ul><li>Each session asks for 3 random gestures; at least 2 are from the easy set.</li><li>Move your hand inside the circle, make the gesture, and hold it until the gold ring completes.</li><li>Use good lighting, face your palm to the camera, and keep your whole hand visible.</li></ul>
+  </footer>
+</body>
+</html>

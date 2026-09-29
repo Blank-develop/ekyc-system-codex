@@ -1,0 +1,4 @@
+full_name,date_of_birth,nationality,passport_numbers,source_ref,reason,severity
+JORDAN ALEX RIVERA,1985-03-22,USA,A1234567,DEMO-001,Fictional demo entry — not a real person,high
+SAMPLE TEST PERSON,1990-01-01,LAO,PA0000001,DEMO-002,Fictional demo entry — not a real person,high
+CHRIS MORGAN LEE,1978-11-09,GBR,GB9988776;GB1122334,DEMO-003,Fictional demo entry — not a real person,medium

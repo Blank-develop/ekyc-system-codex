@@ -60,6 +60,25 @@ class TemplateCipher:
         except Exception:
             return None
 
+    def encrypt_bytes(self, raw: bytes) -> bytes:
+        """Encrypt a binary blob (evidence frame) for storage at rest.
+
+        Returns the ciphertext when a key is configured, otherwise the input
+        unchanged so demo/dev deployments keep working. The caller records which
+        form was written so reads stay backward compatible.
+        """
+        if self._fernet is None:
+            return raw
+        return self._fernet.encrypt(raw)
+
+    def decrypt_bytes(self, stored: bytes) -> bytes | None:
+        if self._fernet is None:
+            return stored
+        try:
+            return self._fernet.decrypt(stored)
+        except Exception:
+            return None
+
     def blind_index(self, value) -> str | None:
         """Deterministic keyed hash for equality lookups on encrypted fields,
         without revealing the value (e.g. passport-number uniqueness)."""

@@ -22,3 +22,18 @@ frontend/dist/
 .dart_tool/
 sdk/flutter/build/
 sdk/flutter/pubspec.lock
+
+# --- Secrets, biometric data & PII — never commit (added for GitHub import) ---
+.local-certs/
+evidence/
+passport/
+*.db
+*.sqlite3
+backend/ekyc_local.db
+backend/backend/
+# Loose identity/ID images kept in the repo root during testing
+/*.png
+/*.jpg
+/*.jpeg
+# Local server runtime artifacts
+*.pid

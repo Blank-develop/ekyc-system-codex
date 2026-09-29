@@ -10,6 +10,13 @@ from app.services.face_biometrics import OpenCvFaceRecognizer, PassiveSpoofAnaly
 
 FACE_MATCH_PASS_THRESHOLD = 0.68
 FACE_MATCH_BORDERLINE_THRESHOLD = 0.74
+# Identity binding for the interactive steps (active liveness, hand gesture).
+# Those frames are captured mid-motion -- head turned, mouth open, a hand near
+# the face -- so they are blurrier and more off-axis than a posed selfie. We
+# therefore bind them to the document portrait at a slightly looser threshold
+# than the selfie step, which keeps genuine users passing while still refusing
+# a different person from standing in for any single step.
+LIVE_STEP_FACE_MATCH_THRESHOLD = 0.62
 # Below this face-width/frame-width ratio the PAD models are unreliable and
 # strongly biased toward spoof, so small-face frames are excluded from the
 # model vote and a mostly-small burst is asked to move closer instead.

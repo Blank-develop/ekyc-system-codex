@@ -79,12 +79,19 @@ class BiometricAnalysis(BaseModel):
     selfie_signals: list[FraudSignal] = Field(default_factory=list)
 
 
+class EngineMetadata(BaseModel):
+    pipeline_version: str = "unversioned"
+    decision_policy_version: str = "unversioned"
+    build_sha: str = "development"
+
+
 class VerificationResult(BaseModel):
     session_id: UUID
     user_id: str
     created_at: datetime
     updated_at: datetime
     decision: Decision = Decision.pending
+    engine: EngineMetadata = Field(default_factory=EngineMetadata)
     reason_codes: list[str] = Field(default_factory=list)
     document: DocumentAnalysis = Field(default_factory=DocumentAnalysis)
     biometric: BiometricAnalysis = Field(default_factory=BiometricAnalysis)
@@ -93,6 +100,10 @@ class VerificationResult(BaseModel):
     # IAL2 step 5: the applicant's address/phone has been confirmed via a returned
     # enrollment code. Only enforced when LALIGENCE_REQUIRE_CONTACT_CONFIRMATION.
     contact_confirmed: bool = False
+    # A government watchlist ("blacklist") match was found for this session. When
+    # true the flow is hard-stopped and the client shows a blocking alert; the
+    # traveller is referred to an officer. Never auto-cleared by the client.
+    watchlist_blocked: bool = False
     # Client-binding token, returned only when the session is created. Must be sent
     # back in the X-Session-Token header on subsequent session-scoped requests.
     session_token: str | None = None
@@ -256,6 +267,11 @@ class ContactRequest(BaseModel):
 
 class ContactConfirmRequest(BaseModel):
     code: str
+
+
+class WatchlistAdjudicateRequest(BaseModel):
+    status: Literal["confirmed", "dismissed", "pending"]
+    note: str | None = None
 
 
 class ContactChallengeResponse(BaseModel):

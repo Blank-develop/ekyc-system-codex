@@ -24,7 +24,7 @@ def test_gesture_requires_active_liveness_first() -> None:
     ch = session.hand_challenges[0]
     r = client.post(
         f"/api/verifications/{sid}/challenge",
-        json={"challenge_id": ch.id, "passed": True, "nonce": ch.nonce},
+        data={"challenge_id": ch.id, "passed": "true", "nonce": ch.nonce},
         headers=headers,
     )
     assert r.status_code == 409
@@ -36,13 +36,13 @@ def test_gesture_requires_valid_nonce() -> None:
     # missing nonce
     assert client.post(
         f"/api/verifications/{sid}/challenge",
-        json={"challenge_id": ch.id, "passed": True},
+        data={"challenge_id": ch.id, "passed": "true"},
         headers=headers,
     ).status_code == 401
     # wrong nonce
     assert client.post(
         f"/api/verifications/{sid}/challenge",
-        json={"challenge_id": ch.id, "passed": True, "nonce": "not-the-nonce"},
+        data={"challenge_id": ch.id, "passed": "true", "nonce": "not-the-nonce"},
         headers=headers,
     ).status_code == 401
 
@@ -54,7 +54,7 @@ def test_gesture_completes_with_nonce_then_blocks_replay() -> None:
 
     ok = client.post(
         f"/api/verifications/{sid}/challenge",
-        json={"challenge_id": ch.id, "passed": True, "nonce": nonce},
+        data={"challenge_id": ch.id, "passed": "true", "nonce": nonce},
         headers=headers,
     )
     assert ok.status_code == 200
@@ -63,7 +63,7 @@ def test_gesture_completes_with_nonce_then_blocks_replay() -> None:
     # Replaying the same (now consumed) nonce must fail.
     replay = client.post(
         f"/api/verifications/{sid}/challenge",
-        json={"challenge_id": ch.id, "passed": True, "nonce": nonce},
+        data={"challenge_id": ch.id, "passed": "true", "nonce": nonce},
         headers=headers,
     )
     assert replay.status_code == 401

@@ -1,0 +1,1222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr>
+        <p:cNvPr id="1" name=""/>
+        <p:cNvGrpSpPr/>
+        <p:nvPr/>
+      </p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+      </p:grpSpPr>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="1" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{CF79896A-95E5-4E23-ACA8-56CD4F84D7EA}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="0" y="0"/>
+            <a:ext cx="12192000" cy="6858000"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="F6F8FC"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="F6F8FC"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="2" name=""/>
+          <p:cNvPicPr>
+            <a:picLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+          </p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" r:embed="R17005f94e7bb42b8"/>
+          <a:stretch xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="609600" y="344085"/>
+            <a:ext cx="1104900" cy="1026329"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+        </p:spPr>
+      </p:pic>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="3" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{862C133E-74E7-4F5B-96A9-2A3A0B866F8B}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="9620250" y="533400"/>
+            <a:ext cx="1619250" cy="285750"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="FFFFFF"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="13335">
+            <a:solidFill>
+              <a:srgbClr val="071B4A"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="4" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{F6957A20-1D13-4736-8779-F702027C948B}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="9620250" y="581025"/>
+            <a:ext cx="1619250" cy="190500"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="975" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="975" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>The core problem</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="5" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{329A6B22-47E1-45C1-8C8C-3F81CE1D3CDC}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="685800" y="1600200"/>
+            <a:ext cx="7429500" cy="1009650"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="l">
+              <a:defRPr sz="3150" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="3150" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Identity verification forces a hard trade-off</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="6" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{1D157503-A2BD-40DC-ACB6-B57598D081AD}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="685800" y="2781300"/>
+            <a:ext cx="6858000" cy="704850"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="l">
+              <a:defRPr sz="1725" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1725" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Businesses want fast onboarding, but every shortcut can increase fraud, compliance risk, or manual review cost.</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="7" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{9BF2D041-A019-4AE0-B05F-2A5820AF2648}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="781050" y="4000500"/>
+            <a:ext cx="9191625" cy="38100"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="DDE5F2"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="DDE5F2"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="8" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{DAAA2A29-1D04-49E9-904B-1FFD7D2B4BB0}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="781050" y="3695700"/>
+            <a:ext cx="609600" cy="609600"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="ellipse">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="FFFFFF"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="19050">
+            <a:solidFill>
+              <a:srgbClr val="16A6A5"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="9" name=""/>
+          <p:cNvPicPr>
+            <a:picLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+          </p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" r:embed="R043ae14b4f29403a">
+            <a:extLst>
+              <a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">
+                <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="R9abb3f25db374401"/>
+              </a:ext>
+            </a:extLst>
+          </a:blip>
+          <a:stretch xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="952500" y="3867150"/>
+            <a:ext cx="266700" cy="266700"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+        </p:spPr>
+      </p:pic>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="10" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{9AAD2965-2C52-4098-88F0-834F74471AD1}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="438150" y="4495800"/>
+            <a:ext cx="1295400" cy="304800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Speed</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="11" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{2CB4E7E6-B6CC-497F-B31F-CB27D44F32CC}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="57150" y="4857750"/>
+            <a:ext cx="2057400" cy="685800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Long KYC flow creates drop-off before signup is complete.</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="12" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{3C7B797D-F756-4A7D-A6DC-B226DED878B2}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="4591050" y="3695700"/>
+            <a:ext cx="609600" cy="609600"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="ellipse">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="FFFFFF"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="19050">
+            <a:solidFill>
+              <a:srgbClr val="C94B4B"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="13" name=""/>
+          <p:cNvPicPr>
+            <a:picLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+          </p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" r:embed="R05027f7784c646f4">
+            <a:extLst>
+              <a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">
+                <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="R99d4a32c2e574a32"/>
+              </a:ext>
+            </a:extLst>
+          </a:blip>
+          <a:stretch xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="4762500" y="3867150"/>
+            <a:ext cx="266700" cy="266700"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+        </p:spPr>
+      </p:pic>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="14" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{4EE545A0-2E68-4263-86F1-29797D5DEE1B}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="4248150" y="4495800"/>
+            <a:ext cx="1295400" cy="304800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Trust</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="15" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{C7B7081A-C03A-4093-820A-B31104AC9DCA}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="3867150" y="4857750"/>
+            <a:ext cx="2057400" cy="685800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Fake IDs, edited documents, and replay attacks are hard to catch.</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="16" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{55966BF6-0991-465D-9757-753AD4C21C01}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8401050" y="3695700"/>
+            <a:ext cx="609600" cy="609600"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="ellipse">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="FFFFFF"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="19050">
+            <a:solidFill>
+              <a:srgbClr val="D9AA2A"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:pic>
+        <p:nvPicPr>
+          <p:cNvPr id="17" name=""/>
+          <p:cNvPicPr>
+            <a:picLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+          </p:cNvPicPr>
+          <p:nvPr/>
+        </p:nvPicPr>
+        <p:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" r:embed="Re13e33740a8a4072">
+            <a:extLst>
+              <a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">
+                <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="R572b6f754b8e46f7"/>
+              </a:ext>
+            </a:extLst>
+          </a:blip>
+          <a:stretch xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+        </p:blipFill>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8572500" y="3867150"/>
+            <a:ext cx="266700" cy="266700"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+        </p:spPr>
+      </p:pic>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="18" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{FD86451A-ADC6-45BF-BEFA-4FCAA91D42B9}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8058150" y="4495800"/>
+            <a:ext cx="1295400" cy="304800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1800" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Proof</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="19" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{50356BF6-583B-4CA1-BE38-514F3A151AD8}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="7677150" y="4857750"/>
+            <a:ext cx="2057400" cy="685800"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1275" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="475569"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Teams need clear evidence for review, audit, and compliance.</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="20" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{3479F869-2609-442E-B770-4BD104548160}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8458200" y="1666875"/>
+            <a:ext cx="2495550" cy="1638300"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="FFFFFF"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="11430">
+            <a:solidFill>
+              <a:srgbClr val="DDE5F2"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="21" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{C310661B-5562-4044-9BF7-1B8612B8F7F5}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8763000" y="1924050"/>
+            <a:ext cx="1885950" cy="247650"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1350" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="D9AA2A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1350" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="D9AA2A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Pain point</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="22" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{72B20821-0AA7-4909-9AB7-9AFDBD97A4B8}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="8686800" y="2238375"/>
+            <a:ext cx="2038350" cy="895350"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="ctr">
+              <a:defRPr sz="1650" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1650" b="1">
+                <a:solidFill>
+                  <a:srgbClr val="071B4A"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Manual KYC is slow. Basic digital KYC is easy to attack.</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="23" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{1E2B54AB-A03F-4224-A629-0080280BDF57}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="666750" y="6257925"/>
+            <a:ext cx="10858500" cy="9525"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="DDE5F2"/>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="DDE5F2"/>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="24" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{8A0CA103-FB47-4AE3-9214-58CF80280914}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="666750" y="6419850"/>
+            <a:ext cx="2095500" cy="228600"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="l">
+              <a:defRPr sz="1050" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="6B7280"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1050" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="6B7280"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Kyron eKYC</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="25" name="">
+            <a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+                <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{D526C214-FB23-454D-B2D0-128335BE6DA0}"/>
+              </a:ext>
+            </a:extLst>
+          </p:cNvPr>
+          <p:cNvSpPr>
+            <a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noGrp="1"/>
+          </p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:off x="9620250" y="6419850"/>
+            <a:ext cx="1905000" cy="228600"/>
+          </a:xfrm>
+          <a:prstGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+          <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:srgbClr val="000000">
+              <a:alpha val="0"/>
+            </a:srgbClr>
+          </a:solidFill>
+          <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+            <a:solidFill>
+              <a:srgbClr val="000000">
+                <a:alpha val="0"/>
+              </a:srgbClr>
+            </a:solidFill>
+            <a:prstDash val="solid"/>
+          </a:ln>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
+          <a:lstStyle xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+          <a:p xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <a:pPr algn="r">
+              <a:defRPr sz="1050" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="6B7280"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr sz="1050" b="0">
+                <a:solidFill>
+                  <a:srgbClr val="6B7280"/>
+                </a:solidFill>
+                <a:latin typeface="Aptos"/>
+                <a:ea typeface="Aptos"/>
+                <a:cs typeface="Aptos"/>
+              </a:rPr>
+              <a:t>Pain point</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+    <p:extLst>
+      <p:ext uri="{BB962C8B-B14F-4D97-AF65-F5344CB8AC3E}">
+        <p14:creationId xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" val="897548194"/>
+      </p:ext>
+    </p:extLst>
+  </p:cSld>
+</p:sld>

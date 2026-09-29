@@ -1,0 +1,19 @@
+# Keep GitHub's language stats meaningful: exclude generated build artifacts and
+# vendored third-party assets from Linguist, and collapse them in diffs.
+
+# Rendered decks, slides, and document exports (HTML with embedded base64 images)
+outputs/**            linguist-generated=true
+docs/*.html           linguist-generated=true
+docs/*.pdf            linguist-generated=true
+docs/*.docx           linguist-generated=true
+docs/*.pptx           linguist-generated=true
+
+# Vendored browser libraries (e.g. MediaPipe) are not our source
+**/vendor/**          linguist-vendored=true
+*.min.js              linguist-generated=true
+
+# Flutter/Dart platform scaffolding is generated, not authored
+examples/**/android/** linguist-generated=true
+examples/**/ios/**     linguist-generated=true
+examples/**/macos/**   linguist-generated=true
+examples/**/web/**     linguist-generated=true

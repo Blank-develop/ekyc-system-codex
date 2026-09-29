@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""Render the Kyron eKYC white paper as a strict IEEE-style two-column PDF.
+
+Uses headless Google Chrome (same approach as the other docs/ PDF builders) to
+print a self-contained HTML document laid out as an IEEE conference paper:
+Times, two columns, roman-numeral sections, column-spanning title/abstract/
+tables, and an 8pt reference list.
+
+    .venv/bin/python scripts/build_kyron_white_paper_pdf.py
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs"
+HTML_PATH = DOCS / "kyron-ekyc-white-paper-ieee.html"
+OUTPUT_PDF = DOCS / "kyron-ekyc-white-paper.pdf"
+CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+HTML = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Kyron eKYC White Paper (IEEE)</title>
+<style>
+  @page { size: letter; margin: 0.72in 0.6in 0.7in 0.6in; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 9.6pt; line-height: 1.16; color: #000; margin: 0;
+    column-count: 2; column-gap: 0.26in; text-align: justify; hyphens: auto;
+    counter-reset: sec fig tbl;
+  }
+  p { margin: 0 0 5pt; }
+  a { color: #000; text-decoration: none; }
+
+  /* Column-spanning masthead */
+  .span { column-span: all; -webkit-column-span: all; }
+  .head { text-align: center; margin-bottom: 8pt; }
+  .head h1 {
+    font-size: 20pt; font-weight: 700; line-height: 1.12; margin: 0 0 8pt;
+    letter-spacing: .1px;
+  }
+  .authors { font-size: 11pt; margin: 0 0 2pt; }
+  .affil { font-size: 9pt; font-style: italic; line-height: 1.35; margin: 0; }
+  .affil .ph { color: #444; }
+
+  /* Abstract + index terms (IEEE sets these bold / bold-italic, indented) */
+  .abstract { font-weight: 700; font-size: 9pt; margin: 0 0 5pt; }
+  .abstract .lab { font-style: italic; }
+  .idxterms { font-weight: 700; font-style: italic; font-size: 9pt; margin: 0 0 6pt; }
+  .idxterms .lab { }
+
+  .disc {
+    font-size: 8pt; font-style: italic; line-height: 1.3; color: #222;
+    border: 0.5pt solid #999; padding: 4pt 6pt; margin: 0 0 7pt;
+  }
+  .disc b { font-style: normal; }
+
+  /* Sections: centered roman-numeral small caps; subsections italic */
+  h2 {
+    font-size: 9.6pt; font-weight: 400; font-variant: small-caps;
+    text-align: center; margin: 9pt 0 4pt; break-after: avoid;
+  }
+  h2:not(.nonum) { counter-reset: ssec; }
+  h2:not(.nonum)::before { counter-increment: sec; content: counter(sec, upper-roman) ".\00a0\00a0"; }
+  h3 {
+    font-size: 9.6pt; font-weight: 400; font-style: italic;
+    margin: 6pt 0 3pt; break-after: avoid;
+  }
+  h3::before { counter-increment: ssec; content: counter(ssec, upper-alpha) ".\00a0"; }
+
+  ol, ul { margin: 2pt 0 5pt; padding-left: 13pt; }
+  li { margin: 0 0 2.5pt; }
+  b, strong { font-weight: 700; }
+  .mono { font-family: "Courier New", monospace; font-size: 7.6pt; white-space: pre; line-height: 1.25; }
+
+  .flow {
+    column-span: all; -webkit-column-span: all;
+    font-family: "Courier New", monospace; font-size: 7.4pt; line-height: 1.3;
+    white-space: pre; border: 0.5pt solid #bbb; padding: 6pt 8pt; margin: 3pt 0 7pt;
+    text-align: left; overflow: hidden;
+  }
+
+  /* Tables — IEEE: caption above, centered "TABLE N", small type */
+  figure.tbl { margin: 4pt 0 8pt; break-inside: avoid; }
+  figure.tbl.wide { column-span: all; -webkit-column-span: all; }
+  .tblcap { text-align: center; font-size: 8pt; margin: 0 0 3pt; }
+  .tblcap .n { font-variant: small-caps; }
+  .tblcap .t { font-style: italic; }
+  table { border-collapse: collapse; width: 100%; font-size: 8pt; }
+  th, td { padding: 2.2pt 5pt; text-align: left; }
+  thead th { border-top: 1pt solid #000; border-bottom: 0.6pt solid #000; font-weight: 700; }
+  tbody tr:last-child td { border-bottom: 1pt solid #000; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .up { font-weight: 700; }
+
+  h2.nonum { }
+  ol.refs { padding-left: 0; list-style: none; counter-reset: ref; margin-top: 2pt; }
+  ol.refs li { font-size: 8pt; line-height: 1.25; padding-left: 16pt; text-indent: -16pt; margin: 0 0 2.5pt; }
+  ol.refs li::before { counter-increment: ref; content: "[" counter(ref) "]\00a0"; }
+  .refnote { font-size: 7.5pt; font-style: italic; color: #444; margin-top: 4pt; }
+</style>
+</head>
+<body>
+
+  <div class="head span">
+    <h1>Kyron eKYC: A Robust, Explainable, IAL2-Aligned Pipeline<br/>for Remote Identity Proofing and Face Login</h1>
+    <p class="authors">Kyron Research Team</p>
+    <p class="affil"><span class="ph">&#10216;author names&#10217;</span><br/>
+    <span class="ph">&#10216;affiliation, city, country&#10217;</span> &nbsp;&middot;&nbsp; <span class="ph">&#10216;corresponding-author e-mail&#10217;</span></p>
+  </div>
+
+  <p class="abstract span"><span class="lab">Abstract&mdash;</span>Remote (unsupervised) identity proofing must simultaneously read and validate a government identity document, establish that a live human&mdash;not a photograph, screen, or mask&mdash;is present, and bind that human to the document portrait, all from consumer cameras under uncontrolled lighting. We present Kyron eKYC, a web-first pipeline (Python/FastAPI backend, React/Vite client) that composes document fraud detection, ICAO&nbsp;9303 machine-readable-zone (MRZ) reading, passive presentation-attack detection (PAD), browser-side active liveness, and face matching into one explainable risk decision aligned to NIST SP&nbsp;800-63A Identity Assurance Level&nbsp;2. We describe the architecture and, in particular, robustness fixes that materially improve real-world read rates: correct handling of ICAO two-letter document types, MRZ-crop super-resolution, conditional illumination normalization, positional re-alignment of the OCR name line, and a mirrored-document detector. On a 150-image passport benchmark, MRZ detection rises 52.9%&#8594;67.3% and fully check-digit-valid reads 35.1%&#8594;46.0%; conditional on a valid read, date-of-birth and sex are 100%, expiry 99%, document number 93%. For selfie capture, face-region light metering plus a low-light rescue raise dark-room face detection 25%&#8594;95% with no regression on well-lit images. We discuss privacy-preserving data handling, the IAL2 alignment matrix, and the hardening required before certification.</p>
+
+  <p class="idxterms span"><span class="lab">Index Terms&mdash;</span>identity proofing, eKYC, NIST IAL2, presentation attack detection, liveness, MRZ/OCR, face recognition, ISO/IEC 30107.</p>
+
+  <p class="disc span"><b>Disclaimer.</b> Kyron is <i>designed toward</i> NIST SP&nbsp;800-63A IAL2 alignment. This paper does not claim NIST, ISO, bank-grade, or government certification. Quantitative results are measured on the datasets in Sec.&nbsp;VII and are operating-point estimates pending a larger, independently labelled study.</p>
+
+  <h2>Introduction</h2>
+  <p>Digital onboarding for banking, telecom, and government services increasingly relies on <b>remote identity proofing</b>: a user, alone with a phone or laptop, presents an identity document and their face, and an automated system decides whether to trust the claimed identity. Unlike supervised (in-person) proofing, the system cannot control lighting, camera quality, document handling, or the presence of an operator to detect obvious spoofs. The adversary, by contrast, can present printed photos, replayed video, screen captures, masks, and tampered or substituted documents.</p>
+  <p>This paper describes Kyron eKYC, a prototype that treats remote proofing as a <b>composition of independent, individually-explainable checks</b> rather than a single black-box classifier. Each stage emits typed reason codes and calibrated risk contributions, and the final decision is an auditable function of those signals. This addresses two requirements that pure end-to-end models struggle to satisfy: regulatory expectations for explainability and redress, and operational debuggability when a genuine user is wrongly rejected.</p>
+  <p>In summary, the contributions of this paper are:</p>
+  <ol>
+    <li>An explainable, standards-aligned pipeline spanning document fraud detection, MRZ/OCR, passive and active liveness, and face matching, with a per-signal risk model (Sec.&nbsp;III&ndash;V).</li>
+    <li>Robustness engineering for real-world capture (Sec.&nbsp;VI): six OCR/MRZ correctness and legibility fixes and a two-part lighting fix, each isolated and measured.</li>
+    <li>An empirical evaluation (Sec.&nbsp;VII) on document, spoof, and liveness datasets, with before/after effects and failure analysis.</li>
+    <li>A NIST IAL2 alignment matrix and hardening roadmap (Sec.&nbsp;VIII&ndash;X) separating what is demonstrated from what remains for certification.</li>
+  </ol>
+
+  <h2>Background and Standards Basis</h2>
+  <p>Kyron is designed against four normative references. <b>NIST SP&nbsp;800-63A</b> (enrollment and identity proofing) requires validating strong or superior evidence, verifying the evidence belongs to the applicant (a biometric comparison with liveness), and fraud/duplicate checks. <b>ICAO Doc&nbsp;9303</b> defines the TD3 passport MRZ&mdash;two 44-character lines, field offsets, the 7-3-1 weighted check-digit scheme, and the composite check&mdash;implemented directly by our reader. <b>ISO/IEC 30107-3</b> frames PAD evaluation via the Attack and Bona-fide Presentation Classification Error Rates (APCER, BPCER). <b>FATF Digital ID guidance</b> motivates risk-based assurance, auditability, and ongoing monitoring, reflected in the reason-code and audit design.</p>
+
+  <h2>System Architecture</h2>
+  <h3>End-to-end flow</h3>
+  <div class="flow">Document capture (passport / Lao ID)
+  quality . likeness . MRZ/OCR . forensics . fraud ensemble  --reject--&gt; retake
+        |  pass
+        v
+Active liveness  (MediaPipe FaceMesh: blink / mouth / head-turn)
+        + backend evidence-burst PAD (anti screen / replay)
+        v
+Randomized hand-gesture challenge  (3 of 23, easy-weighted)
+        v
+Selfie passive liveness + face match  (10-frame burst; YuNet+SFace vs portrait)
+        v
+Risk decision (typed reason codes)  --&gt;  enroll one Face ID  --&gt;  face login</div>
+  <h3>Design principles</h3>
+  <p><i>Composition over monolith:</i> every stage is independently testable and emits reason codes; the decision layer is a transparent aggregation, not a learned end-to-end score. <i>Client/edge split:</i> latency- and privacy-sensitive work (landmark tracking, image optimisation, live lighting feedback) runs in the browser; trust-bearing decisions (PAD, MRZ validation, face matching) run server-side so a modified client cannot forge them. <i>Fail-explainable:</i> a rejection always carries a human-actionable reason. <i>Privacy by construction:</i> raw images are not persisted during verification; only transient face embeddings live in session state.</p>
+  <h3>Implementation</h3>
+  <p>The backend is Python/FastAPI with service boundaries for document fraud, model-style document adapters, face biometrics/PAD, and selfie aggregation; profiles persist via SQLAlchemy (SQLite locally, PostgreSQL in deployment). The frontend is React/Vite with in-browser MediaPipe FaceMesh/Hands. OCR uses Tesseract; detection and recognition use OpenCV YuNet + SFace; PAD uses an ONNX MiniFASNet-family ensemble with heuristic corroboration.</p>
+
+  <h2>Methods</h2>
+  <h3>Document quality, likeness, forensics</h3>
+  <p>Before OCR, each upload is scored for resolution, brightness, contrast, sharpness, glare, and document-likeness (edge density, rectangularity) to reject non-document uploads. Forensic analyzers estimate recapture risk, tamper risk, and <b>portrait substitution</b>&mdash;a genuine body/MRZ with a swapped photo&mdash;via saturation/noise discontinuities in the portrait region conditioned on <i>mrz_valid</i>. A heuristic and optional-ONNX ensemble fuses these into a fraud-risk score.</p>
+  <h3>MRZ / OCR (ICAO TD3)</h3>
+  <p>Passport reading parses TD3 field offsets and validates the document-number, birth-date, expiry, optional, and composite check digits with 7-3-1 weighting. Validity is anchored on the check-digit-protected line-2 data, so number, DOB, and expiry are trustworthy whenever <i>mrz_valid</i> is true; the alphabetic line-1 name field, which carries no check digit, is best-effort and corrected by Sec.&nbsp;VI.</p>
+  <h3>Passive liveness / PAD</h3>
+  <p>The selfie stage captures a 10-frame burst and aggregates per-frame PAD, combining a MiniFASNet-family model with heuristics for screen borders, display moir&eacute;, paper texture, and hand-held-phone cues, plus temporal burst checks (near-static frames or absent brightness variation indicate replay). A single-frame model spike is deliberately insufficient to reject a bona-fide user.</p>
+  <h3>Active liveness</h3>
+  <p>The client runs MediaPipe FaceMesh and issues randomized challenges&mdash;blink, open mouth, turn left/right&mdash;from landmark geometry (eye-aspect ratio, mouth-open ratio, nose-offset yaw). On detection it sends a short evidence burst to the backend, which re-runs face detection and PAD so a challenge cannot be satisfied by a modified client alone. A randomized hand-gesture challenge (three of 23, easy-weighted) adds interaction expensive to pre-render for replay.</p>
+  <h3>Face matching and Face ID</h3>
+  <p>Matching uses OpenCV YuNet detection and SFace embeddings, comparing the live selfie to the document portrait by cosine similarity against a pass threshold with a borderline band. A passed session enrolls one active template per user and one profile per document number, enabling returning-user face login that re-checks passive liveness before matching.</p>
+
+  <h2>Threat Model</h2>
+  <p>We assume a remote attacker who may present a printed photo, photocopy, or scan of a genuine document; replay a screen or video of a face; wear a paper/cutout mask; present a tampered or portrait-substituted document; hold a phone/tablet screen to the camera; or exploit capture artifacts (front-camera mirroring, extreme back-light) to slip a spoof through as poor quality. We do not claim defense against high-fidelity 3-D masks, injection attacks on a compromised device or OS, or coerced-genuine-user scenarios; these are out of scope for a software-only prototype.</p>
+
+  <h2>Robustness Engineering</h2>
+  <p>Field testing showed the dominant cause of <i>bona-fide</i> failures was not the models but the <b>capture front-end</b>: real documents that would not read and real faces that would not detect under ordinary phone-camera conditions. We isolated and measured six document/MRZ fixes and one two-part lighting fix.</p>
+  <h3>ICAO two-letter document-type acceptance</h3>
+  <p>The MRZ line-1 selector required a <i>P&lt;</i> prefix, silently rejecting every passport whose type sub-category is a letter (Lao <i>PO</i>, diplomatic <i>PD</i>, service <i>PS</i>) before any check digit was evaluated. We broadened acceptance to <i>P</i> + (<i>&lt;</i> or letter) + a 3-letter issuing country, with a digit-count guard separating the alphabetic name line from the numeric data line. This was the single largest driver of the read-rate gain.</p>
+  <h3>MRZ-crop super-resolution</h3>
+  <p>Dataset images are small (median 726&nbsp;px wide), so a TD3 glyph is 6&ndash;10&nbsp;px tall&mdash;near Tesseract's floor. MRZ crops are upscaled with fractional LANCZOS to ~2600&nbsp;px, and upright bottom-band crops were added.</p>
+  <h3>Conditional illumination normalization</h3>
+  <p>Dark or washed-out captures are normalized (CLAHE + gamma toward mid-tone) before OCR. Normalization is <b>conditional</b>: well-exposed images stay on the original path, after unconditional CLAHE was observed to over-sharpen crisp glyphs and induce errors (<i>P</i>&#8594;<i>M</i>). Enhancement must be gated to the regime it helps.</p>
+  <h3>Line-1 re-alignment and filler stripping</h3>
+  <p>Because line 1 has no check digit, its OCR noise is uncorrected. A doubled leading type character (<i>POLAO</i> misread as <i>PPOLAO</i>, shifting country and every name character right by one) is detected&mdash;<i>PP</i> is not a valid type&mdash;and realigned; and a single filler-letter (OCR rendering <i>&lt;</i> as, e.g., <i>K</i>) that bled onto a name is stripped. These recovered <i>OCHANTHABANDITH&nbsp;/&nbsp;KITSANAK</i> to <i>CHANTHABANDITH&nbsp;/&nbsp;KITSANA</i> on a live example.</p>
+  <h3>Nationality cross-fill</h3>
+  <p>The nationality (line 2) and issuing country (line 1) are the same ICAO 3-letter code. When OCR mangles line 2 into non-letters (<i>LAO</i>&#8594;<i>1OO</i>) but line 1 is clean, the issuer is used&mdash;which depends on the line-1 re-alignment above.</p>
+  <h3>Mirrored-document detection</h3>
+  <p>Front cameras horizontally flip the frame, so a held document reads backwards and never parses. On the failure path only, Kyron re-reads a flipped copy; if that yields a valid MRZ, the original was mirrored and a specific high-severity <i>DOCUMENT_MIRRORED</i> signal is emitted with retake guidance, at no cost to a normal successful read.</p>
+  <h3>Lighting robustness for selfies</h3>
+  <p>Brightness/contrast/glare are metered on the detected face crop, not the whole frame, so a bright background behind a dark (back-lit) face is correctly diagnosed. When detection fails or the frame is under-exposed, detection/embedding is retried on an illumination-normalized copy (geometry-preserving, so the box stays valid for PAD, which remains on the original image). A live client warning and capture-gating prevent many bad frames pre-emptively.</p>
+
+  <h2>Evaluation</h2>
+  <h3>Datasets</h3>
+  <p>We use the project's labelled sets: a passport corpus of 864 image/ground-truth pairs (820 passports, 44 face-only/non-passport), selfie passive-liveness and face-login sets, an active-liveness attack set, and print-copy document attacks. Passport ground truth is taken from the MRZ lines, which are canonical, rather than the noisier printed fields.</p>
+
+  <h3>Passport MRZ/OCR read rate</h3>
+  <figure class="tbl wide">
+    <figcaption class="tblcap"><span class="n">Table I.</span> <span class="t">150-image passport sample, all Sec.&nbsp;VI document fixes vs. pre-fix baseline (pp = percentage points).</span></figcaption>
+    <table>
+      <thead><tr><th>Metric</th><th class="n">Baseline</th><th class="n">With fixes</th><th class="n">&#916;</th></tr></thead>
+      <tbody>
+        <tr><td>MRZ detected (readable)</td><td class="n">52.9%</td><td class="n up">67.3%</td><td class="n">+14.4</td></tr>
+        <tr><td>MRZ fully valid (all check digits)</td><td class="n">35.1%</td><td class="n up">46.0%</td><td class="n">+10.9</td></tr>
+        <tr><td>Passport number</td><td class="n">34.9%</td><td class="n">46.7%</td><td class="n">+11.8</td></tr>
+        <tr><td>Date of birth</td><td class="n">42.7%</td><td class="n">57.3%</td><td class="n">+14.6</td></tr>
+        <tr><td>Expiry date</td><td class="n">43.8%</td><td class="n">59.1%</td><td class="n">+15.3</td></tr>
+      </tbody>
+    </table>
+  </figure>
+  <p>Conditional accuracy (given a fully-valid MRZ) confirms the parser is sound and the ceiling is OCR legibility, not logic: date-of-birth 100%, sex 100%, expiry 99%, passport number 93%, nationality 83&ndash;91%. Face-only/non-passport images are correctly not read as passports 85&ndash;88% of the time, and mirrored documents are rejected with the specific reason code. Remaining non-reads are dominated by capture geometry&mdash;hand-held photos at arbitrary angles and glare&mdash;which super-resolution cannot recover; the highest-value next step is MRZ localization and deskew.</p>
+
+  <h3>Selfie presentation-attack detection</h3>
+  <p>Corroboration-based aggregation eliminated a systematic bona-fide failure: real faces wearing eyeglasses previously triggered a held-phone/screen false-reject at ~43%; after requiring recurrence plus model corroboration this fell to 0% while screen/photo spoofs continued to be rejected at the prior rate in the tested sets. A back-light/over-exposure diagnosis converts a class of silent PAD false-rejects into actionable retake guidance.</p>
+
+  <h3>Active-liveness anti-spoof gate</h3>
+  <p>On collected attacks, the server-side gate (small-face rejection plus a recurring PAD-model vote over 3-frame bursts) rejected printed-photo (120 images / 40 bursts) and phone-screen-replay (50 images / 17 bursts) at 100% with 0% false-accept.</p>
+
+  <h3>Lighting robustness</h3>
+  <figure class="tbl">
+    <figcaption class="tblcap"><span class="n">Table II.</span> <span class="t">Face-detection success on 20 genuine selfies synthetically darkened.</span></figcaption>
+    <table>
+      <thead><tr><th>Condition</th><th class="n">Baseline</th><th class="n">With fix</th></tr></thead>
+      <tbody>
+        <tr><td>Dim room (&#215;0.18)</td><td class="n">75%</td><td class="n up">100%</td></tr>
+        <tr><td>Very dark (&#215;0.12)</td><td class="n">25%</td><td class="n up">95%</td></tr>
+      </tbody>
+    </table>
+  </figure>
+  <p>Well-lit images were unchanged (20/20 detected; embeddings untouched), so there is no regression on the common case&mdash;the rescue path activates only for images already failing. <i>On headline figures:</i> earlier collateral cites ~95.7% document and ~96.4% liveness accuracy; these remain target/operating-point estimates pending a &#8805;10k-per-category labelled study and are not claimed as validated here.</p>
+
+  <h2>NIST IAL2 Alignment and Assurance</h2>
+  <figure class="tbl wide">
+    <figcaption class="tblcap"><span class="n">Table III.</span> <span class="t">IAL2 obligations mapped to Kyron mechanisms and prototype status.</span></figcaption>
+    <table>
+      <thead><tr><th>IAL2 obligation</th><th>Kyron mechanism</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Validate strong evidence</td><td>TD3 MRZ + check digits; quality/forensics; fraud ensemble</td><td>Demonstrated (prototype)</td></tr>
+        <tr><td>Evidence belongs to applicant</td><td>Face match (YuNet+SFace) selfie &#8596; portrait</td><td>Demonstrated</td></tr>
+        <tr><td>Presence / anti-spoof</td><td>Passive PAD burst + active challenge&ndash;response + backend bursts</td><td>Demonstrated; APCER/BPCER not certified</td></tr>
+        <tr><td>Fraud / duplicate checks</td><td>Portrait-substitution, recapture, tamper signals; one-profile-per-document</td><td>Partial</td></tr>
+        <tr><td>Explainability / redress</td><td>Typed reason codes; admin audit view</td><td>Prototype; manual review pending</td></tr>
+      </tbody>
+    </table>
+  </figure>
+  <p>During verification Kyron does not persist raw document or selfie images; it holds only transient face embeddings in session state, which is short-lived and client-bound by a per-session token to defeat id-only replay. A passed session stores one face template and a minimal profile (document number, name, nationality, birth date/age, expiry). Remaining hardening for certification: encrypted, revocable template storage; consent and retention controls; authenticated admin APIs and tamper-evident audit logging; independent PAD validation with reported APCER/BPCER; calibrated thresholds from large sets; manual review and redress; MFA for high-value actions; and third-party security/privacy assessment.</p>
+
+  <h2>Limitations and Threats to Validity</h2>
+  <p>Sec.&nbsp;VII uses hundreds, not tens of thousands, of images, some synthetically perturbed; absolute rates will shift on larger, field-representative data. Using MRZ as ground truth measures OCR fidelity to the printed MRZ, not to civil-registry identity. Heuristic PAD corroboration is tuned to observed attacks; novel display hardware and high-fidelity masks are not represented. Camera/OS injection, deepfake video injection, and coerced-genuine-user cases are not addressed by a software-only client.</p>
+
+  <h2>Future Work</h2>
+  <p>Priorities are: (1) MRZ localization and perspective rectification&mdash;the highest-ROI change for the remaining non-read passports; (2) independent PAD benchmarking with reported APCER/BPCER; (3) calibrated, per-population thresholds with fairness analysis across demographics and eyewear; (4) deepfake and injection resistance via device attestation, signed capture, and challenge entropy; and (5) a large labelled validation study to convert target headline figures into certified operating points.</p>
+
+  <h2>Conclusion</h2>
+  <p>Kyron eKYC shows that a composed, explainable remote-proofing pipeline can be made materially more robust to real-world capture without sacrificing spoof resistance, by fixing the front-end failure modes that dominate bona-fide rejections: document-type handling, MRZ legibility, mirrored capture, and lighting. The measured gains&mdash;passport read validity 35%&#8594;46%, dark-room face detection 25%&#8594;95%, and elimination of the eyeglass PAD false-reject, all without regressions on the well-behaved case&mdash;argue for treating capture robustness as a first-class research target alongside model accuracy. The path to certification is a disciplined hardening and independent-validation program, not a change of architecture.</p>
+
+  <h2 class="nonum">References</h2>
+  <ol class="refs">
+    <li>NIST, &ldquo;SP 800-63A: Digital Identity Guidelines&mdash;Enrollment and Identity Proofing.&rdquo;</li>
+    <li>ICAO, &ldquo;Doc 9303: Machine Readable Travel Documents,&rdquo; Parts 3&ndash;4 (TD3).</li>
+    <li>ISO/IEC 30107-3, &ldquo;Biometric presentation attack detection&mdash;Part 3: Testing and reporting.&rdquo;</li>
+    <li>FATF, &ldquo;Guidance on Digital Identity.&rdquo;</li>
+    <li>J. Deng et al., &ldquo;ArcFace / SFace face representation.&rdquo;</li>
+    <li>W. Wu et al., &ldquo;YuNet: A Tiny Millisecond-level Face Detector.&rdquo;</li>
+    <li>Google, &ldquo;MediaPipe Face Mesh and Hands.&rdquo;</li>
+    <li>MiniFASNet / Silent-Face anti-spoofing family (ONNX).</li>
+  </ol>
+  <p class="refnote span">Replace indicative references with full citations before external release.</p>
+
+</body>
+</html>
+"""
+
+
+def run_chrome(args: list[str]) -> None:
+    subprocess.run([CHROME, "--headless", "--disable-gpu", "--no-first-run", *args], check=True, capture_output=True)
+
+
+def main() -> int:
+    if not Path(CHROME).exists():
+        print(f"Google Chrome not found at {CHROME}", file=sys.stderr)
+        return 1
+    DOCS.mkdir(parents=True, exist_ok=True)
+    HTML_PATH.write_text(HTML, encoding="utf-8")
+    url = HTML_PATH.resolve().as_uri()
+    run_chrome([f"--print-to-pdf={OUTPUT_PDF}", "--no-pdf-header-footer", url])
+    print(f"Wrote {OUTPUT_PDF}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

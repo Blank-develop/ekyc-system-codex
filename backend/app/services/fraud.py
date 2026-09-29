@@ -8,6 +8,7 @@ import subprocess
 import threading
 from dataclasses import dataclass, field
 from datetime import date
+from difflib import SequenceMatcher
 from io import BytesIO
 from statistics import mean
 from typing import Any
@@ -135,7 +136,41 @@ class OcrTextExtractor:
             language = "lao+eng" if "lao" in self.languages else "eng"
         context.checks["ocr_language"] = language
 
-        for name, image in self._ocr_regions(context.image):
+        # Fast path for an open passport photographed vertically from farther
+        # away. Its identity page usually occupies the middle of the frame, so
+        # a small targeted MRZ pass can validate the document before the much
+        # slower full-page/orientation fallback OCR runs.
+        if document_type == "passport" and context.height > context.width * 1.08:
+            width, height = context.image.size
+            mid_page = context.image.crop(
+                (
+                    int(width * 0.08),
+                    int(height * 0.50),
+                    int(width * 0.92),
+                    int(height * 0.66),
+                )
+            )
+            prepared = self._prepare_for_mrz_ocr_soft(mid_page, target=1400)
+            mrz_config = "--oem 3 --psm 11 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"
+            try:
+                mid_page_text = pytesseract.image_to_string(prepared, lang="eng", config=mrz_config)
+            except pytesseract.TesseractError as exc:
+                context.checks["ocr_mrz_error"] = str(exc)
+            else:
+                if mid_page_text.strip():
+                    context.checks["ocr_mrz_mid_page_fast_chars"] = len(mid_page_text)
+                    candidate_lines = MrzAnalyzer._candidate_lines(mid_page_text)
+                    selected = MrzAnalyzer()._select_td3_pair(candidate_lines)
+                    if selected is not None and selected[2].get("valid"):
+                        merged = mid_page_text.strip()
+                        context.checks["ocr_fast_mid_page"] = True
+                        context.checks["ocr_text_chars"] = len(merged)
+                        return merged
+
+        for name, image in self._ocr_regions(
+            context.image,
+            include_passport_rotations=document_type == "passport",
+        ):
             prepared = self._prepare_for_ocr(image)
             try:
                 text = pytesseract.image_to_string(prepared, lang=language, config=config)
@@ -147,17 +182,123 @@ class OcrTextExtractor:
                 text_blocks.append(text)
 
         if document_type == "passport":
+            # Lao passport numbers are printed in the upper-right of the
+            # identity page, well above the MRZ. On portrait open-book photos,
+            # full-page OCR often inserts spaces between ``PA`` and the seven
+            # digits while the MRZ pass loses the same prefix. Preserve one
+            # tight visual-field read as independent evidence for the
+            # checksum-gated MRZ consensus below.
+            merged_visual_text = "\n".join(text_blocks).upper()
+            if context.height > context.width * 1.08 and "LAO" in merged_visual_text:
+                width, height = context.image.size
+                number_zone = context.image.crop(
+                    (
+                        int(width * 0.68),
+                        int(height * 0.54),
+                        int(width * 0.98),
+                        int(height * 0.64),
+                    )
+                ).convert("L")
+                number_zone = number_zone.resize(
+                    (number_zone.width * 3, number_zone.height * 3),
+                    Image.Resampling.LANCZOS,
+                )
+                try:
+                    number_text = pytesseract.image_to_string(
+                        number_zone,
+                        lang="eng",
+                        config="--oem 3 --psm 6",
+                    )
+                except pytesseract.TesseractError as exc:
+                    context.checks["ocr_visual_document_number_error"] = str(exc)
+                else:
+                    if number_text.strip():
+                        context.checks["ocr_visual_document_number_chars"] = len(number_text)
+                        text_blocks.append(number_text)
+
             mrz_config = "--oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"
             for name, image, psm in self._passport_mrz_regions(context.image):
-                prepared = self._prepare_for_mrz_ocr(image)
-                try:
-                    text = pytesseract.image_to_string(prepared, lang="eng", config=f"{mrz_config} --psm {psm}")
-                except pytesseract.TesseractError as exc:
-                    context.checks["ocr_mrz_error"] = str(exc)
-                    continue
-                if text.strip():
-                    context.checks[f"ocr_{name}_chars"] = len(text)
-                    text_blocks.append(text)
+                # The tight low-resolution crop is intentionally grayscale:
+                # adaptive thresholding turns soft Australian MRZ chevrons into
+                # K/C/R glyphs and destroys otherwise useful character reads.
+                if "_rotated_framed" in name:
+                    variants = [(name, self._prepare_for_rotated_mrz_ocr(image))]
+                elif "_tight_soft" in name:
+                    if name.startswith("mrz_mid_page_"):
+                        soft_target = 1400
+                    elif "_bottom_safe_" in name:
+                        soft_target = 3400
+                    else:
+                        soft_target = 3200 if name == "mrz_bottom_28_tight_soft" else 2600
+                    variants = [(name, self._prepare_for_mrz_ocr_soft(image, target=soft_target))]
+                else:
+                    variants = [(name, self._prepare_for_mrz_ocr(image))]
+                # Textured passport backgrounds can be damaged by adaptive
+                # thresholding. Keep a softer grayscale pass for the two full
+                # orientation candidates; this recovers sideways MRZ bands
+                # without doubling every OCR crop in the normal path.
+                if name in {"mrz_rot270_bottom_30", "mrz_rot90_bottom_30"}:
+                    variants.append((f"{name}_soft", self._prepare_for_mrz_ocr_soft(image)))
+                # Glare bands across the laminate (typical of hand-held US
+                # passport photos) survive divide-by-background normalization
+                # but are destroyed by adaptive thresholding. One extra pass on
+                # the two upright bottom-band crops only.
+                if name in {"mrz_bottom_22", "mrz_bottom_30"}:
+                    variants.append((f"{name}_glare", self._prepare_for_mrz_ocr_glare(image)))
+                if name == "mrz_bottom_22":
+                    variants.append((f"{name}_glare_binary", self._prepare_for_mrz_ocr_glare(image, binarize=True)))
+                if "_bottom_safe_" in name:
+                    variants.append((f"{name}_glare", self._prepare_for_mrz_ocr_glare(image)))
+                for variant_name, prepared in variants:
+                    try:
+                        text = pytesseract.image_to_string(prepared, lang="eng", config=f"{mrz_config} --psm {psm}")
+                    except pytesseract.TesseractError as exc:
+                        context.checks["ocr_mrz_error"] = str(exc)
+                        continue
+                    if text.strip():
+                        context.checks[f"ocr_{variant_name}_chars"] = len(text)
+                        text_blocks.append(text)
+                        selected = MrzAnalyzer()._select_td3_pair(
+                            MrzAnalyzer._candidate_lines("\n".join(text_blocks))
+                        )
+                        if selected is not None and selected[2].get("valid"):
+                            # The bottom-safe pass deliberately has two
+                            # complementary variants: soft grayscale preserves
+                            # the number/date line, while glare normalization
+                            # usually preserves the country/name line. Do not
+                            # finalize from the first half alone; its damaged
+                            # nationality is not check-digit protected and can
+                            # otherwise pair with an older noisy name line.
+                            if "_bottom_safe_" in variant_name and not variant_name.endswith("_glare"):
+                                continue
+                            context.checks["ocr_fast_mrz_region"] = variant_name
+                            if "_rotated_framed" in variant_name:
+                                degrees_match = re.search(r"rot(90|270)", variant_name)
+                                if degrees_match:
+                                    rotated = context.image.rotate(int(degrees_match.group(1)), expand=True)
+                                    visual_zone = rotated.crop(
+                                        (
+                                            int(rotated.width * 0.15),
+                                            int(rotated.height * 0.08),
+                                            int(rotated.width * 0.90),
+                                            int(rotated.height * 0.68),
+                                        )
+                                    )
+                                    try:
+                                        visual_text = pytesseract.image_to_string(
+                                            self._prepare_for_ocr(visual_zone),
+                                            lang="eng",
+                                            config="--oem 3 --psm 6",
+                                        )
+                                    except pytesseract.TesseractError as exc:
+                                        context.checks["ocr_rotated_visual_error"] = str(exc)
+                                    else:
+                                        if visual_text.strip():
+                                            context.checks["ocr_rotated_visual_chars"] = len(visual_text)
+                                            text_blocks.append(visual_text)
+                            merged = "\n".join(text_blocks).strip()
+                            context.checks["ocr_text_chars"] = len(merged)
+                            return merged
 
         merged = "\n".join(text_blocks).strip()
         context.checks["ocr_text_chars"] = len(merged)
@@ -184,32 +325,106 @@ class OcrTextExtractor:
         return {line.strip() for line in output.splitlines() if line.strip() and not line.startswith("List of available")}
 
     @staticmethod
-    def _ocr_regions(image: Image.Image) -> list[tuple[str, Image.Image]]:
+    def _ocr_regions(
+        image: Image.Image,
+        include_passport_rotations: bool = False,
+    ) -> list[tuple[str, Image.Image]]:
         width, height = image.size
-        return [
+        regions = [
             ("full", image),
             ("bottom_45", image.crop((0, int(height * 0.55), width, height))),
             ("bottom_32", image.crop((0, int(height * 0.68), width, height))),
         ]
+        # A landscape passport photographed sideways is commonly stored in a
+        # portrait pixel canvas without EXIF orientation. The thresholded MRZ
+        # crops below can lose characters on display/moire captures, while the
+        # normal full-page pass remains readable after rotation. Run both
+        # directions only for portrait-shaped passport uploads, limiting the
+        # additional OCR cost to images that plausibly need orientation repair.
+        if include_passport_rotations and height > width * 1.08:
+            regions.extend(
+                [
+                    ("full_rot90", image.rotate(90, expand=True)),
+                    ("full_rot270", image.rotate(270, expand=True)),
+                ]
+            )
+        return regions
 
     @staticmethod
     def _passport_mrz_regions(image: Image.Image) -> list[tuple[str, Image.Image, int]]:
         width, height = image.size
         rotated_90 = image.rotate(90, expand=True)
         rotated_270 = image.rotate(270, expand=True)
-        return [
+        regions = [
             # Upright passports: the MRZ is the bottom band. These were missing,
             # so upright captures previously only reached the milder general OCR.
             ("mrz_bottom_22", image.crop((0, int(height * 0.78), width, height)), 6),
             ("mrz_bottom_22_sparse", image.crop((0, int(height * 0.78), width, height)), 11),
             ("mrz_bottom_30", image.crop((0, int(height * 0.70), width, height)), 6),
-            # Rotated captures (MRZ along a vertical edge).
+            ("mrz_bottom_30_sparse", image.crop((0, int(height * 0.70), width, height)), 11),
+            # Soft, full-width band for small open-book captures. Keeping the
+            # page edge is useful when the two MRZ baselines sit very close to
+            # the bottom of the photo; hard thresholding commonly changes the
+            # protected AUS date digits on this layout.
+            ("mrz_bottom_28_tight_soft", image.crop((0, int(height * 0.72), width, height)), 6),
+            # Exclude the page edge/background below the document. On small,
+            # soft captures this gives Tesseract enough vertical context for
+            # both TD3 lines without letting the fabric/table edge join them.
+            ("mrz_bottom_25_tight_soft", image.crop((0, int(height * 0.75), width, int(height * 0.98))), 6),
+            ("mrz_bottom_25_tight_soft_sparse", image.crop((0, int(height * 0.75), width, int(height * 0.98))), 11),
+        ]
+        if height > width * 1.08:
+            # Sideways open-book photos often include background beneath the
+            # passport. After rotation, crop to the physical page instead of
+            # the bottom of the whole camera frame; otherwise the MRZ's second
+            # line is diluted by bedding/table pixels and thresholding erases
+            # it. Keep a small horizontal inset to remove fingers/page edges.
+            for degrees, rotated in ((90, rotated_90), (270, rotated_270)):
+                regions.append(
+                    (
+                        f"mrz_rot{degrees}_rotated_framed",
+                        rotated.crop(
+                            (
+                                int(rotated.width * 0.05),
+                                int(rotated.height * 0.66),
+                                int(rotated.width * 0.98),
+                                int(rotated.height * 0.94),
+                            )
+                        ),
+                        6,
+                    )
+                )
+                # When the passport fills the camera frame, the second TD3
+                # line can sit below the framed crop's old 94% boundary. Keep
+                # an almost edge-to-edge, softly processed band as a separate
+                # sparse-text pass. This is especially important for sideways
+                # captures where the page edge, not the camera-frame edge,
+                # defines the MRZ baseline.
+                regions.append(
+                    (
+                        f"mrz_rot{degrees}_bottom_safe_tight_soft",
+                        rotated.crop(
+                            (
+                                int(rotated.width * 0.01),
+                                int(rotated.height * 0.78),
+                                int(rotated.width * 0.995),
+                                int(rotated.height * 0.995),
+                            )
+                        ),
+                        11,
+                    )
+                )
+        regions.extend(
+            [
+            # Generic rotated captures (MRZ along a vertical edge).
             ("mrz_right_65_rot270", image.crop((int(width * 0.65), 0, width, height)).rotate(270, expand=True), 6),
             ("mrz_right_65_rot270_sparse", image.crop((int(width * 0.65), 0, width, height)).rotate(270, expand=True), 11),
             ("mrz_rot270_bottom_30", rotated_270.crop((0, int(rotated_270.height * 0.70), rotated_270.width, rotated_270.height)), 6),
             ("mrz_rot270_bottom_30_sparse", rotated_270.crop((0, int(rotated_270.height * 0.70), rotated_270.width, rotated_270.height)), 11),
             ("mrz_rot90_bottom_30", rotated_90.crop((0, int(rotated_90.height * 0.70), rotated_90.width, rotated_90.height)), 6),
-        ]
+            ]
+        )
+        return regions
 
     @staticmethod
     def _normalize_ocr_gray(gray: Image.Image) -> Image.Image:
@@ -283,6 +498,75 @@ class OcrTextExtractor:
             9,
         )
         return Image.fromarray(thresholded)
+
+    @staticmethod
+    def _prepare_for_mrz_ocr_soft(image: Image.Image, target: int = 2600) -> Image.Image:
+        """Preserve fine MRZ strokes when thresholding erases textured text."""
+        gray = ImageOps.autocontrast(ImageOps.grayscale(image))
+        longest = max(gray.size)
+        if 0 < longest < target:
+            scale = min(target / longest, 5.0 if target > 2600 else 4.0)
+            gray = gray.resize(
+                (max(1, round(gray.width * scale)), max(1, round(gray.height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        return gray.filter(ImageFilter.SHARPEN)
+
+    @staticmethod
+    def _prepare_for_rotated_mrz_ocr(image: Image.Image) -> Image.Image:
+        """Prepare a framed sideways MRZ without amplifying page texture."""
+        gray = ImageOps.grayscale(image)
+        if gray.width and gray.width < 3000:
+            scale = min(3000 / gray.width, 4.0)
+            gray = gray.resize(
+                (max(1, round(gray.width * scale)), max(1, round(gray.height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        gray = ImageOps.autocontrast(gray)
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return gray
+        thresholded = cv2.adaptiveThreshold(
+            np.asarray(gray),
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            11,
+        )
+        return Image.fromarray(thresholded)
+
+    @staticmethod
+    def _prepare_for_mrz_ocr_glare(image: Image.Image, binarize: bool = False) -> Image.Image:
+        """Suppress laminate glare: divide the band by its blurred background.
+
+        A specular glare streak shifts local brightness far more than local
+        contrast, so normalizing each pixel by the local background level
+        leaves the dark MRZ strokes intact where thresholding wipes them out.
+        Falls back to the soft grayscale prep when OpenCV is unavailable."""
+        gray = ImageOps.grayscale(image)
+        longest = max(gray.size)
+        if 0 < longest < 2600:
+            scale = min(2600 / longest, 4.0)
+            gray = gray.resize(
+                (max(1, round(gray.width * scale)), max(1, round(gray.height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return ImageOps.autocontrast(gray).filter(ImageFilter.SHARPEN)
+        array = np.asarray(gray)
+        background = cv2.GaussianBlur(array, (0, 0), 21)
+        normalized = cv2.divide(array, background, scale=255)
+        if binarize:
+            # Global Otsu AFTER glare normalization keeps the "<" separators
+            # crisp where local adaptive thresholding hallucinates letters.
+            _, normalized = cv2.threshold(normalized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return Image.fromarray(normalized)
 
 
 class SuryaOcrExtractor:
@@ -552,16 +836,57 @@ class MrzAnalyzer:
             evidence_score = self._passport_text_evidence_score(ocr_text or "")
             context.checks["passport_text_evidence_score"] = round(evidence_score, 3)
             if evidence_score >= 0.65:
-                context.signals.append(_signal("MRZ_NOT_CONFIDENT", "Passport MRZ was not confidently read, but visible passport fields were detected.", "medium", 0.28))
+                context.signals.append(_signal(
+                    "MRZ_NOT_CONFIDENT",
+                    "Passport MRZ could not be validated. Retake the photo with both MRZ lines fully visible, sharp, and with space below the document.",
+                    "high",
+                    0.78,
+                ))
                 context.checks["mrz_found"] = False
                 context.checks["mrz_soft_fallback"] = True
-                return OcrResult(confidence=0.28, mrz_valid=False, mrz_check_digits_valid=False)
+                return OcrResult(confidence=0.0, mrz_valid=False, mrz_check_digits_valid=False)
             context.signals.append(_signal("MRZ_NOT_READ", "Passport MRZ was not read; upload must contain readable passport evidence.", "high", 0.82))
             context.checks["mrz_found"] = False
             context.checks["mrz_soft_fallback"] = False
             return OcrResult(confidence=0.0, mrz_valid=False, mrz_check_digits_valid=False)
 
         line1, line2, parsed = selected
+        malaysian_single_identifier = (
+            line1[2:5] == "MYS" and "<<" not in line1[5:]
+        )
+        if parsed.get("full_name") and not malaysian_single_identifier:
+            parsed["full_name"] = self._corroborate_name_with_printed_fields(
+                str(parsed["full_name"]),
+                ocr_text or "",
+            )
+            printed_name_tokens = {
+                token
+                for source_line in (ocr_text or "").upper().splitlines()
+                if "<" not in source_line
+                for token in re.findall(r"[A-Z]{2,}", source_line)
+            }
+            printed_name_lines = [
+                re.sub(r"[^A-Z]", "", source_line.upper())
+                for source_line in (ocr_text or "").splitlines()
+                if "<" not in source_line
+            ]
+            repaired_name_tokens = set(str(parsed["full_name"]).split())
+            consensus_name = self._recover_name_from_mrz_consensus(
+                lines,
+                ocr_text or "",
+                str(parsed.get("nationality") or ""),
+            )
+            if consensus_name and not (
+                repaired_name_tokens
+                and (
+                    repaired_name_tokens.issubset(printed_name_tokens)
+                    or all(
+                        any(token in printed_line for printed_line in printed_name_lines)
+                        for token in repaired_name_tokens
+                    )
+                )
+            ):
+                parsed["full_name"] = consensus_name
         context.checks["mrz_found"] = True
         context.checks["mrz_valid"] = parsed["valid"]
         context.checks["mrz_check_digits_valid"] = parsed["check_digits_valid"]
@@ -610,36 +935,1137 @@ class MrzAnalyzer:
             score += 0.16
         if "<<" in text or compact.startswith("P") or "POLAO" in compact or "P<LAO" in compact:
             score += 0.08
+        # General TD3 fragments for non-Lao passports. A blurred MRZ may lose
+        # its first characters while still exposing an issuer/name separator
+        # and the digit-heavy data-line structure. Treat these as corroborating
+        # passport evidence only; they never make ``mrz_valid`` true.
+        if re.search(r"[A-Z]{3,5}[A-Z]{2,}<{1,3}[A-Z]{3,}", compact):
+            score += 0.1
+        if re.search(r"[A-Z0-9]{7,12}[A-Z0-9]{3}[A-Z0-9]{7}[MFNXWH][A-Z0-9]{6}", compact):
+            score += 0.1
         return _clamp(score)
 
     @staticmethod
+    def _corroborate_name_with_printed_fields(full_name: str, text: str) -> str:
+        """Drop a trailing filler glyph when the printed name confirms it.
+
+        MRZ OCR frequently turns the first ``<`` after a name into ``S``. The
+        visual-zone OCR is independent evidence; only shorten a token when a
+        non-MRZ printed line ends with the exact token minus that final glyph.
+        """
+        printed_lines = [
+            re.sub(r"[^A-Z]", "", line.upper())
+            for line in text.splitlines()
+            if "<" not in line
+        ]
+        printed_tokens = {
+            token
+            for line in text.splitlines()
+            if "<" not in line
+            for token in re.findall(r"[A-Z]{2,}", line.upper())
+            if token
+            not in {
+                "PASSPORT",
+                "NATIONALITY",
+                "AUTHORITY",
+                "MINISTRY",
+                "FOREIGN",
+                "AFFAIRS",
+                "COUNTRY",
+                "DATE",
+                "BIRTH",
+                "EXPIRY",
+                "ISSUE",
+                "SEX",
+            }
+        }
+        corrected: list[str] = []
+        for token in full_name.split():
+            # A "<" between two given names is often misread as a letter,
+            # fusing them ("STEPHEN<WELCH" -> "STEPHENSWELCH"). Split at an
+            # inner character only when a printed visual-zone line shows the
+            # left chunk immediately followed by the right chunk's first
+            # letter -- genuine names like VILAYSONE are never split because
+            # print shows the same letter, not the next chunk, after "VILAY".
+            fused_split = None
+            for index in range(4, max(4, len(token) - 3)):
+                left, glyph, right = token[:index], token[index], token[index + 1 :]
+                if len(right) < 3 or right[0] == glyph:
+                    continue
+                if any(left + right[0] in line for line in printed_lines if len(line) > len(left)):
+                    fused_split = (left, right)
+                    break
+            if fused_split:
+                corrected.extend(fused_split)
+                continue
+            shortened = token[:-1]
+            trailing_filler_removed = len(shortened) >= 4 and any(
+                line.endswith(shortened) for line in printed_lines
+            )
+            corrected_token = shortened if trailing_filler_removed else token
+            # Filler cleanup can remove the final character of a genuine name
+            # when Tesseract repeats that same character throughout the MRZ
+            # tail (``THOMAS...SSSS`` -> ``THOMA``). Restore exactly one letter
+            # only when an independently OCR'd visual-zone line corroborates it.
+            extensions = {
+                line[-1]
+                for line in printed_lines
+                if len(token) >= 4 and len(line) > len(token) and line.endswith(token + line[-1])
+            }
+            if not trailing_filler_removed and len(extensions) == 1:
+                corrected_token = token + extensions.pop()
+
+            # Valid MRZ checks establish identity fields even when the name line
+            # loses a few characters. Use the independently OCR'd visual zone to
+            # repair only tightly bounded truncations: a printed token extending
+            # the MRZ token, the MRZ token carrying one leading artifact, or a
+            # near-exact OCR spelling. This turns ``KYU HID`` into ``YU HIDAKA``
+            # without replacing unrelated names merely because both are words.
+            candidates: list[tuple[int, int, float, str]] = []
+            for printed in printed_tokens if corrected_token not in printed_tokens else ():
+                similarity = SequenceMatcher(None, corrected_token, printed).ratio()
+                prefix_extension = (
+                    printed.startswith(corrected_token)
+                    and 0 < len(printed) - len(corrected_token) <= 4
+                    and similarity >= 0.65
+                )
+                leading_artifact = (
+                    len(corrected_token) - len(printed) == 1
+                    and corrected_token.endswith(printed)
+                    and similarity >= 0.75
+                )
+                leading_truncation = (
+                    len(printed) - len(corrected_token) == 1
+                    and printed.endswith(corrected_token)
+                    and similarity >= 0.75
+                )
+                single_substitution = (
+                    len(corrected_token) == len(printed)
+                    and len(printed) >= 5
+                    and sum(left != right for left, right in zip(corrected_token, printed)) == 1
+                )
+                # The first/last filler beside a short surname can be read as a
+                # letter at the same time that one real glyph is substituted
+                # (Indian ``JHA`` -> MRZ OCR ``IHAK``). Permit that exact shape
+                # only for short printed tokens: deleting one edge character
+                # must leave a same-length token with at most one substitution.
+                edge_filler_substitution = (
+                    3 <= len(printed) <= 6
+                    and len(corrected_token) == len(printed) + 1
+                    and any(
+                        sum(left != right for left, right in zip(trimmed, printed)) <= 1
+                        for trimmed in (corrected_token[1:], corrected_token[:-1])
+                    )
+                )
+                near_exact = similarity >= 0.86 and abs(len(printed) - len(corrected_token)) <= 2
+                if prefix_extension or leading_artifact or leading_truncation or single_substitution or edge_filler_substitution or near_exact:
+                    # A longer printed token that starts with the truncated MRZ
+                    # token carries more information than a second OCR pass that
+                    # repeats the same truncation (HIDA vs HIDAKA).
+                    repair_priority = 3 if prefix_extension else 2 if (leading_artifact or leading_truncation or single_substitution or edge_filler_substitution) else 1
+                    repair_detail = (
+                        len(printed) - len(corrected_token)
+                        if prefix_extension
+                        else -abs(len(printed) - len(corrected_token))
+                    )
+                    candidates.append(
+                        (
+                            repair_priority,
+                            repair_detail,
+                            similarity,
+                            printed,
+                        )
+                    )
+            if candidates:
+                corrected_token = max(candidates)[3]
+            corrected.append(corrected_token)
+        # OCR often prints adjacent given names without a space while the MRZ
+        # correctly separates them with "<". If filler cleanup clipped at most
+        # two trailing letters from the second token, restore them only when a
+        # complete printed line is exactly the concatenation of the first name
+        # and that slightly longer second name (TIMOTHY + GEO ->
+        # TIMOTHYGEORG). This cannot pull labels or unrelated body text into the
+        # identity name because the remainder must be a short direct extension.
+        for index in range(len(corrected) - 1):
+            left = corrected[index]
+            right = corrected[index + 1]
+            extensions = {
+                line[len(left) :]
+                for line in printed_lines
+                if line.startswith(left)
+                and line[len(left) :].startswith(right)
+                and 0 < len(line[len(left) :]) - len(right) <= 2
+                and len(line[len(left) :]) <= 20
+            }
+            if len(extensions) == 1:
+                corrected[index + 1] = next(iter(extensions))
+
+        # Visual-zone OCR usually prints surname and given name on consecutive
+        # standalone lines. If one of a two-token MRZ name matches that pair
+        # exactly, use the adjacent printed token to replace the other badly
+        # damaged MRZ token. This is deliberately pair-based: a random place or
+        # authority word elsewhere on the page cannot replace a name merely by
+        # being alphabetic.
+        if len(corrected) == 2:
+            excluded_name_lines = {
+                "PASSPORT",
+                "NATIONALITY",
+                "AUTHORITY",
+                "MINISTRY",
+                "FOREIGN",
+                "AFFAIRS",
+                "COUNTRY",
+                "DATE",
+                "BIRTH",
+                "EXPIRY",
+                "ISSUE",
+                "SEX",
+            }
+            standalone_name_lines: list[str] = []
+            for source_line in text.splitlines():
+                if "<" in source_line or any(char.isdigit() for char in source_line):
+                    continue
+                words = re.findall(r"[A-Z]+", source_line.upper())
+                # This repair is pair-based and expects the visual OCR's
+                # surname and given name on separate lines. Exclude headings,
+                # country phrases and mixed label/value rows instead of
+                # flattening them into a plausible-looking long name.
+                if len(words) != 1:
+                    continue
+                cleaned = words[0]
+                if (
+                    2 <= len(cleaned) <= 20
+                    and cleaned not in excluded_name_lines
+                    and cleaned not in MONTHS
+                ):
+                    standalone_name_lines.append(cleaned)
+            mrz_source_lines = [
+                re.sub(r"[^A-Z0-9<]", "", source_line.upper())
+                for source_line in text.splitlines()
+                if "<" in source_line
+            ]
+            pair_repairs: list[tuple[int, int, float, str, int]] = []
+            for left, right in zip(standalone_name_lines, standalone_name_lines[1:]):
+                pair = {left, right}
+                exact = [index for index, token in enumerate(corrected) if token in pair]
+                if len(pair) != 2 or len(exact) != 1 or len(corrected[exact[0]]) < 4:
+                    continue
+                # Both printed tokens must also occur in MRZ-bearing OCR. This
+                # excludes adjacent body-text noise such as OVER/HUNEN... while
+                # retaining the independently seen surname/given-name pair.
+                def mrz_supports(token: str) -> bool:
+                    if any(token in line for line in mrz_source_lines):
+                        return True
+                    if len(token) > 6:
+                        return False
+                    return any(
+                        sum(left_char != right_char for left_char, right_char in zip(sample, token)) <= 2
+                        for line in mrz_source_lines
+                        for width in {len(token), len(token) + 1}
+                        for start in range(max(0, len(line) - width + 1))
+                        for sample in (line[start : start + width].strip("<")[: len(token)],)
+                        if len(sample) == len(token) and sample.isalpha()
+                    )
+
+                if not all(mrz_supports(token) for token in pair):
+                    continue
+                missing = next(iter(pair - {corrected[exact[0]]}))
+                if len(missing) < 3:
+                    continue
+                other_index = 1 - exact[0]
+                # Do not degrade an identity token already supported by both
+                # the visual zone and an MRZ-bearing OCR pass. A single clean
+                # visual read is enough when the MRZ independently agrees;
+                # nearby page text such as OVER must not displace that name.
+                current_other = corrected[other_index]
+                if (
+                    current_other in standalone_name_lines
+                    and any(current_other in line for line in mrz_source_lines)
+                ):
+                    continue
+                if corrected[other_index] not in pair:
+                    pair_repairs.append(
+                        (
+                            len(corrected[exact[0]]),
+                            len(missing),
+                            SequenceMatcher(None, corrected[other_index], missing).ratio(),
+                            missing,
+                            other_index,
+                        )
+                    )
+            if pair_repairs:
+                _, _, _, missing, other_index = max(pair_repairs)
+                corrected[other_index] = missing
+        return " ".join(corrected)
+
+    @staticmethod
+    def _recover_name_from_mrz_consensus(
+        lines: list[str],
+        text: str,
+        nationality: str,
+    ) -> str | None:
+        """Recover a split name only when independent OCR reads agree.
+
+        On low-light identity pages, the surname/given-name ``<<`` separator
+        can become letters in some OCR passes. A different pass often retains
+        enough of the separator, while visual-zone OCR reads the printed given
+        name clearly. Require two country-matched MRZ candidates plus that
+        independent printed token to share the same surname prefix before
+        replacing the selected candidate's name.
+        """
+        if len(nationality) != 3 or not nationality.isalpha():
+            return None
+
+        excluded = {
+            "PASSPORT",
+            "NATIONALITY",
+            "AUTHORITY",
+            "MINISTRY",
+            "FOREIGN",
+            "AFFAIRS",
+            "COUNTRY",
+            "DATE",
+            "BIRTH",
+            "EXPIRY",
+            "ISSUE",
+            "SEX",
+            "JAPAN",
+            "DOCUMENT",
+            "NUMBER",
+        }
+        printed_tokens = {
+            token
+            for source_line in text.upper().splitlines()
+            if "<" not in source_line
+            for token in re.findall(r"[A-Z]{4,20}", source_line)
+            if token not in excluded
+        }
+        if not printed_tokens:
+            return None
+
+        name_lines = [
+            line
+            for line in lines
+            if len(line) == 44
+            and line.startswith("P")
+            and line[2:5] == nationality
+            and "<<" in line[5:]
+        ]
+        best: tuple[int, float, int, str] | None = None
+        for printed in printed_tokens:
+            prefixes: set[str] = set()
+            similarities: list[float] = []
+            for line in name_lines:
+                field = line[5:]
+                candidate_best: tuple[float, int, int] | None = None
+                min_width = max(4, len(printed) - 2)
+                max_width = min(len(field), len(printed) + 2)
+                for start in range(min(20, len(field))):
+                    for width in range(min_width, max_width + 1):
+                        sample = field[start : start + width].strip("<")
+                        if len(sample) < 4 or not sample.isalpha():
+                            continue
+                        similarity = SequenceMatcher(None, sample, printed).ratio()
+                        candidate = (similarity, -abs(len(sample) - len(printed)), start)
+                        if candidate_best is None or candidate > candidate_best:
+                            candidate_best = candidate
+                if candidate_best is None or candidate_best[0] < 0.84:
+                    continue
+                start = candidate_best[2]
+                prefix = re.sub(r"[^A-Z]", "", field[:start])
+                if 4 <= len(prefix) <= 20:
+                    prefixes.add(prefix)
+                    similarities.append(candidate_best[0])
+
+            if len(prefixes) < 2:
+                continue
+            surname = os.path.commonprefix(sorted(prefixes)).rstrip("<")
+            if len(surname) < 4 or not surname.isalpha():
+                continue
+            average_similarity = sum(similarities) / len(similarities)
+            candidate = (
+                len(prefixes),
+                average_similarity,
+                len(surname),
+                f"{printed} {surname}",
+            )
+            if best is None or candidate > best:
+                best = candidate
+        return best[3] if best else None
+
+    @staticmethod
     def _candidate_lines(text: str) -> list[str]:
-        lines = []
+        lines: list[str] = []
         normalized_fragments: list[str] = []
+        visual_source_lines = [
+            source_line.upper()
+            for source_line in text.splitlines()
+            if "<" not in source_line
+        ]
+        visible_country_codes = {
+            token
+            for source_line in visual_source_lines
+            for token in re.findall(r"(?<![A-Z])[A-Z]{3}(?![A-Z])", source_line)
+            if token not in MONTHS
+            and token not in {"AND", "THE", "SEX", "EXP", "DOB", "MRZ"}
+        }
+        printed_country_names = {
+            "AUSTRALIA": "AUS",
+            "JAPAN": "JPN",
+            "KINGDOM OF THAILAND": "THA",
+            "THAILAND": "THA",
+            "LAO PDR": "LAO",
+            "LAOS": "LAO",
+            "UNITED STATES OF AMERICA": "USA",
+            "UNITED STATES": "USA",
+            "REPUBLIC OF KOREA": "KOR",
+            "SOUTH KOREA": "KOR",
+            "SPAIN": "ESP",
+            "FRANCE": "FRA",
+            "CANADA": "CAN",
+            "REPUBLIC OF INDIA": "IND",
+            "INDIA": "IND",
+            "PEOPLE'S REPUBLIC OF CHINA": "CHN",
+        }
+        for source_line in visual_source_lines:
+            visible_country_codes.update(
+                code
+                for country_name, code in printed_country_names.items()
+                if country_name in source_line
+            )
+        nat_table = str.maketrans(
+            {"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B", "4": "A", "6": "G"}
+        )
+        visible_document_fragments = {
+            token
+            for source_line in text.upper().splitlines()
+            if "<" not in source_line
+            for token in re.findall(r"(?<![A-Z0-9])[A-Z0-9]{4,9}(?![A-Z0-9])", source_line)
+            if sum(char.isdigit() for char in token) >= 3
+            and any(char.isalpha() for char in token)
+        }
+        # Visual OCR commonly preserves a Lao passport number as two tokens
+        # (``PA 0490616``). Join only the country-specific PA prefix and a
+        # six/seven-digit OCR-like suffix; generic labels such as ``NO`` must
+        # never become document-number evidence.
+        printed_number_digit_map = str.maketrans(
+            {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "G": "6", "B": "8"}
+        )
+        for source_line in visual_source_lines:
+            for match in re.finditer(
+                r"(?<![A-Z0-9])(P[A-Z])\s+([0-9OQDILZSBG]{6,7})(?![A-Z0-9])",
+                source_line,
+            ):
+                suffix = match.group(2).translate(printed_number_digit_map)
+                joined = match.group(1) + suffix
+                if len(joined) in {8, 9} and suffix.isdigit():
+                    visible_document_fragments.add(joined)
+        # TD3 allocates nine characters to the document-number field, but many
+        # countries print an eight-character passport number and pad the MRZ
+        # field with ``<``. Preserve both full-width and padded visual reads.
+        visible_document_numbers = {
+            token if len(token) == 9 else f"{token}<"
+            for token in visible_document_fragments
+            if len(token) in {8, 9}
+        }
+        visible_name_tokens = {
+            cleaned
+            for source_line in visual_source_lines
+            for cleaned in [re.sub(r"[^A-Z]", "", source_line)]
+            if 3 <= len(cleaned) <= 20
+            and cleaned
+            not in {
+                "PASSPORT",
+                "NATIONALITY",
+                "AUTHORITY",
+                "MINISTRY",
+                "FOREIGN",
+                "AFFAIRS",
+                "COUNTRY",
+                "DATE",
+                "BIRTH",
+                "EXPIRY",
+                "ISSUE",
+                "SEX",
+            }
+            and cleaned not in MONTHS
+        }
+
+        def add_candidate(candidate: str) -> None:
+            candidate = MrzAnalyzer._normalize_ocr_mrz_line(candidate)
+            candidate = MrzAnalyzer._recover_short_td3_line(candidate)
+            if not candidate:
+                return
+            candidate = candidate[:44].ljust(44, "<")
+            if MRZ_ALLOWED.match(candidate) and candidate not in lines:
+                lines.append(candidate)
+
         for line in text.upper().splitlines():
             normalized = re.sub(r"[^A-Z0-9<]", "", line)
             if normalized:
                 normalized_fragments.append(normalized)
-            normalized = MrzAnalyzer._normalize_ocr_mrz_line(normalized)
-            normalized = MrzAnalyzer._recover_short_td3_line(normalized)
-            if normalized:
-                normalized = normalized[:44].ljust(44, "<")
-                if MRZ_ALLOWED.match(normalized):
-                    lines.append(normalized)
+            add_candidate(normalized)
+            # A soft rotated pass can preserve the issuer and both names while
+            # dropping one of the two surname/given-name separators
+            # (``PSINDIMAK<ASHUTOSH...``). Restore exactly one chevron only when
+            # the independent visual zone prints the token immediately after
+            # that separator. The paired data line must still pass every ICAO
+            # check before this name line can be selected.
+            single_separator = normalized.find("<", 5)
+            if (
+                len(normalized) >= 20
+                and normalized.startswith("P")
+                and normalized[2:5].isalpha()
+                and "<<" not in normalized
+                and 7 <= single_separator <= 25
+                and any(
+                    normalized[single_separator + 1 :].startswith(token)
+                    for token in visible_name_tokens
+                    if len(token) >= 4
+                )
+            ):
+                add_candidate(
+                    normalized[:single_separator]
+                    + "<<"
+                    + normalized[single_separator + 1 :]
+                )
+            # A page edge can be inserted between the document marker and a
+            # genuine two-letter type (PRPAUS... instead of PPAUS...). Remove
+            # exactly that one glyph only when the resulting issuer is
+            # independently confirmed by the printed country name/code.
+            if (
+                len(normalized) >= 12
+                and normalized[0] == "P"
+                and normalized[2] == "P"
+                and normalized[3:6] in visible_country_codes
+                and "<<" in normalized[6:]
+            ):
+                add_candidate(normalized[0] + normalized[2:])
         for index, fragment in enumerate(normalized_fragments[:-1]):
-            stitched = fragment + normalized_fragments[index + 1]
-            stitched = MrzAnalyzer._normalize_ocr_mrz_line(stitched)
-            stitched = MrzAnalyzer._recover_short_td3_line(stitched)
-            if stitched:
-                stitched = stitched[:44].ljust(44, "<")
-                if MRZ_ALLOWED.match(stitched):
-                    lines.append(stitched)
+            add_candidate(fragment + normalized_fragments[index + 1])
+
+        # Keep document numbers from the original data-line candidates before
+        # adding any repairs. A low-resolution OCR pass may read the number
+        # cleanly but damage a date, while another pass reads the dates cleanly
+        # and changes one number glyph (RB... -> 9B...). The number's own ICAO
+        # check digit lets the clean pass safely corroborate the second one.
+        original_checked_document_numbers = {
+            candidate[:9]
+            for candidate in lines
+            if len(candidate) >= 13
+            and candidate[9].isdigit()
+            and MrzAnalyzer._check_digit(candidate[:9]) == candidate[9]
+        }
+
+        # Low-resolution phone photos often split TD3 line 2 differently in
+        # each OCR pass: one pass preserves the document number and its check
+        # digit, while another drops that prefix but reads the protected
+        # birth/sex/expiry segment clearly. Fuse those independent observations
+        # only when the name line corroborates the issuer and all three primary
+        # ICAO checks validate after normalization. This recovers evidence; it
+        # does not invent unchecked identity fields.
+        name_line_issuers = {
+            candidate[2:5]
+            for candidate in lines
+            if candidate.startswith("P")
+            and "<<" in candidate[5:]
+            and candidate[2:5].isalpha()
+        }
+        checked_numbers_by_issuer = {
+            issuer: {
+                candidate[:9]
+                for candidate in lines
+                if len(candidate) >= 13
+                and candidate[9].isdigit()
+                and sum(
+                    observed != expected
+                    for observed, expected in zip(candidate[10:13], issuer)
+                ) <= 1
+                and MrzAnalyzer._check_digit(candidate[:9]) == candidate[9]
+            }
+            for issuer in name_line_issuers
+        }
+        stitched_data_lines: list[str] = []
+        if name_line_issuers:
+            for fragment in normalized_fragments:
+                for start in range(max(0, len(fragment) - 14)):
+                    segment = fragment[start : start + 31]
+                    if len(segment) < 15 or segment[7] not in {"M", "F", "N", "X", "W", "H"}:
+                        continue
+                    for issuer in name_line_issuers:
+                        for document_number in checked_numbers_by_issuer.get(issuer, set()):
+                            document_check = MrzAnalyzer._check_digit(document_number)
+                            line1 = f"P<{issuer}HOLDER<<TEST".ljust(44, "<")
+                            line2 = (
+                                document_number
+                                + document_check
+                                + issuer
+                                + segment[:31].ljust(31, "<")
+                            )
+                            parsed = MrzAnalyzer()._parse_td3(line1, line2)
+                            if (
+                                parsed.get("valid")
+                                and parsed.get("document_check_digit_valid") is True
+                                and parsed.get("birth_check_digit_valid") is True
+                                and parsed.get("expiry_check_digit_valid") is True
+                            ):
+                                stitched_data_lines.append(line2)
+        for stitched in stitched_data_lines:
+            add_candidate(stitched)
+
+        # Correct a one-character OCR error in the issuing-country/nationality
+        # field only when the same three-letter code was independently read in
+        # the visual inspection zone. This is especially useful on dark Japanese
+        # passports where JPN is commonly rendered as IPN/5PN in the MRZ.
+        country_repaired_lines: list[str] = []
+        country_replaced_lines: set[str] = set()
+        corroborated_country_codes = visible_country_codes | name_line_issuers
+        for candidate in lines:
+            country_start: int | None = None
+            if candidate.startswith("P") and "<<" in candidate:
+                country_start = 2
+            elif sum(char.isdigit() for char in candidate) >= 8:
+                country_start = 10
+            if country_start is None:
+                continue
+            observed = candidate[country_start : country_start + 3]
+            translated_observed = observed.translate(nat_table)
+            # Do not replace a country code that was independently read exactly
+            # in the visual inspection zone. Without this guard, a noisy token
+            # such as SUS could overwrite a clean AUS MRZ field merely because
+            # it is one character away.
+            if observed in corroborated_country_codes or translated_observed in corroborated_country_codes:
+                continue
+            repairs = {
+                code
+                for code in corroborated_country_codes
+                # Nationality is not protected by its own check digit. OCR
+                # commonly emits a digit look-alike first (IND -> 1ND), then a
+                # second pass changes one remaining letter (1ND -> 14D). Apply
+                # the standard digit-to-letter translation before measuring
+                # the one-glyph difference. The printed country name/code or a
+                # separately read TD3 name-line issuer is independent evidence,
+                # while the paired data line still has to satisfy every ICAO
+                # checksum before it can be accepted.
+                if sum(
+                    left != right
+                    for left, right in zip(translated_observed, code)
+                ) == 1
+            }
+            if len(repairs) == 1:
+                code = next(iter(repairs))
+                country_replaced_lines.add(candidate)
+                country_repaired_lines.append(
+                    candidate[:country_start] + code + candidate[country_start + 3 :]
+                )
+        lines[:] = [line for line in lines if line not in country_replaced_lines]
+        for repaired in country_repaired_lines:
+            add_candidate(repaired)
+
+        # A rotated or softly focused MRZ often yields complementary reads:
+        # one pass preserves a printed prefix (``B729...``), while another
+        # preserves the complete TD3 data line but confuses an alphanumeric
+        # document glyph (``B`` -> ``8``) or its adjacent check digit. Recover
+        # a document number only when all of the following independently agree:
+        #   * a visual-zone fragment of at least four leading characters;
+        #   * at most one OCR-lookalike substitution in the MRZ field; and
+        #   * the document, birth, expiry, optional-data and composite ICAO
+        #     check digits all validate after the repair.
+        # The composite check includes the repaired document check digit, so a
+        # plausible-looking visual token alone cannot create a valid identity.
+        if visible_document_fragments:
+            reverse_document_confusions = {
+                "0": ("O", "Q", "D"),
+                "1": ("I", "L"),
+                "2": ("Z",),
+                "3": ("S", "B"),
+                "4": ("A",),
+                "5": ("S",),
+                "6": ("G",),
+                "7": ("T", "Z"),
+                "8": ("B",),
+                "9": ("G",),
+            }
+            consensus_document_lines: list[str] = []
+            document_number_hypotheses: set[str] = set()
+            for candidate in list(lines):
+                if len(candidate) != 44 or sum(char.isdigit() for char in candidate) < 8:
+                    continue
+                observed_number = candidate[:9]
+                number_candidates = {observed_number}
+                for index, char in enumerate(observed_number):
+                    alternatives = list(reverse_document_confusions.get(char, ()))
+                    if char.isalpha():
+                        alternatives.extend(MrzAnalyzer._DIGIT_ALTERNATIVES.get(char, ())[:1])
+                    for replacement in alternatives:
+                        number_candidates.add(
+                            observed_number[:index]
+                            + replacement
+                            + observed_number[index + 1 :]
+                        )
+
+                # Keep a uniquely corroborated number even when this OCR pass
+                # damaged the adjacent nationality/date tail. A second pass may
+                # contain the protected 35-character tail intact.
+                ranked_numbers = sorted(
+                    (
+                        max(
+                            (
+                                len(fragment)
+                                for fragment in visible_document_fragments
+                                if number.rstrip("<").startswith(fragment)
+                            ),
+                            default=0,
+                        ),
+                        -sum(
+                            left != right
+                            for left, right in zip(observed_number, number)
+                        ),
+                        number,
+                    )
+                    for number in number_candidates
+                )
+                if ranked_numbers and ranked_numbers[-1][0] >= 4:
+                    best_number_key = ranked_numbers[-1][:2]
+                    best_numbers = {
+                        number
+                        for prefix, substitutions, number in ranked_numbers
+                        if (prefix, substitutions) == best_number_key
+                    }
+                    if len(best_numbers) == 1:
+                        document_number_hypotheses.add(next(iter(best_numbers)))
+
+                ranked_repairs: list[tuple[int, int, str]] = []
+                for document_number in number_candidates:
+                    expected_check = MrzAnalyzer._check_digit(document_number)
+                    repaired = document_number + expected_check + candidate[10:]
+                    issuer = candidate[10:13].translate(nat_table)
+                    if not issuer.isalpha():
+                        issuer = "UTO"
+                    parsed = MrzAnalyzer()._parse_td3(
+                        f"P<{issuer}HOLDER<<TEST".ljust(44, "<"),
+                        repaired,
+                    )
+                    if not (
+                        parsed.get("valid")
+                        and parsed.get("document_check_digit_valid") is True
+                        and parsed.get("birth_check_digit_valid") is True
+                        and parsed.get("expiry_check_digit_valid") is True
+                        and parsed.get("optional_check_digit_valid") is True
+                        and parsed.get("composite_check_digit_valid") is True
+                    ):
+                        continue
+                    visible_prefix = max(
+                        (
+                            len(fragment)
+                            for fragment in visible_document_fragments
+                            if document_number.rstrip("<").startswith(fragment)
+                        ),
+                        default=0,
+                    )
+                    if visible_prefix < 4:
+                        continue
+                    substitutions = sum(
+                        left != right
+                        for left, right in zip(observed_number, document_number)
+                    )
+                    ranked_repairs.append((visible_prefix, -substitutions, repaired))
+
+                if ranked_repairs:
+                    ranked_repairs.sort(reverse=True)
+                    best_key = ranked_repairs[0][:2]
+                    best_lines = {
+                        repaired
+                        for prefix, substitutions, repaired in ranked_repairs
+                        if (prefix, substitutions) == best_key
+                    }
+                    if len(best_lines) == 1:
+                        consensus_document_lines.append(next(iter(best_lines)))
+            for repaired in consensus_document_lines:
+                add_candidate(repaired)
+
+            # Stitch a uniquely corroborated document number to a complete
+            # check-digit-protected tail from another OCR pass. The tail starts
+            # at the document check digit and is exactly 35 TD3 characters.
+            # Requiring every ICAO checksum, including optional and composite,
+            # prevents an arbitrary 35-character body-text run from qualifying.
+            stitched_consensus_lines: list[str] = []
+            consensus_fragments = list(normalized_fragments)
+            consensus_fragments.extend(
+                left + right
+                for left, right in zip(
+                    normalized_fragments,
+                    normalized_fragments[1:],
+                )
+            )
+            for fragment in consensus_fragments:
+                normalized = MrzAnalyzer._normalize_ocr_mrz_line(fragment)
+                for start in range(max(0, len(normalized) - 34)):
+                    tail = normalized[start : start + 35]
+                    if len(tail) != 35 or not tail[0].isdigit():
+                        continue
+                    issuer = tail[1:4].translate(nat_table)
+                    if not issuer.isalpha():
+                        continue
+                    for document_number in document_number_hypotheses:
+                        stitched = document_number + tail
+                        parsed = MrzAnalyzer()._parse_td3(
+                            f"P<{issuer}HOLDER<<TEST".ljust(44, "<"),
+                            stitched,
+                        )
+                        if (
+                            parsed.get("valid")
+                            and parsed.get("document_check_digit_valid") is True
+                            and parsed.get("birth_check_digit_valid") is True
+                            and parsed.get("expiry_check_digit_valid") is True
+                            and parsed.get("optional_check_digit_valid") is True
+                            and parsed.get("composite_check_digit_valid") is True
+                        ):
+                            stitched_consensus_lines.append(stitched)
+            for stitched in stitched_consensus_lines:
+                add_candidate(stitched)
+
+            # Some softly focused Lao captures preserve the protected
+            # nationality/date segment and final composite digit, but split or
+            # corrupt the document-number prefix. Fuse that segment with an
+            # independently read printed PA number only when the optional-data
+            # area is visibly filler-like and the observed trailing glyph
+            # agrees with the recomputed ICAO composite digit. This keeps the
+            # recovery strict: a missing or wrong composite digit cannot pass.
+            lao_consensus_lines: list[str] = []
+            trailing_digit_map = {
+                "O": "0", "Q": "0", "D": "0",
+                "I": "1", "L": "1",
+                "Z": "2", "S": "5", "B": "8",
+                "G": "6", "T": "7", "E": "8", "A": "4",
+            }
+            filler_like = set("<KCER")
+            lao_numbers = {
+                number
+                for number in visible_document_numbers
+                if number.startswith("PA")
+            }
+            protected_lao_candidates: list[tuple[str, str]] = []
+            for fragment in consensus_fragments:
+                normalized = MrzAnalyzer._normalize_ocr_mrz_line(fragment)
+                for issuer in corroborated_country_codes & {"LAO"}:
+                    issuer_start = normalized.find(issuer)
+                    while issuer_start >= 0:
+                        payload = normalized[issuer_start + 3 :]
+                        if len(payload) >= 15:
+                            protected_core = payload[:15]
+                            remainder = payload[15:]
+                            filler_count = sum(char in filler_like for char in remainder)
+                            non_filler_count = sum(
+                                char not in filler_like
+                                for char in remainder[:-1]
+                            )
+                            if protected_core[7:8] in {"M", "F", "N", "H", "W", "<"}:
+                                for document_number in lao_numbers:
+                                    document_check = MrzAnalyzer._check_digit(document_number)
+                                    provisional = (
+                                        document_number
+                                        + document_check
+                                        + issuer
+                                        + protected_core
+                                        + ("<" * 16)
+                                    )[:44]
+                                    line1 = f"P<{issuer}HOLDER<<TEST".ljust(44, "<")
+                                    _, normalized_line = MrzAnalyzer._normalize_td3_fields(
+                                        line1,
+                                        provisional,
+                                    )
+                                    primary_probe = normalized_line[:43] + "<"
+                                    primary_parsed = MrzAnalyzer()._parse_td3(
+                                        line1,
+                                        primary_probe,
+                                    )
+                                    if not (
+                                        primary_parsed.get("document_check_digit_valid") is True
+                                        and primary_parsed.get("birth_check_digit_valid") is True
+                                        and primary_parsed.get("expiry_check_digit_valid") is True
+                                    ):
+                                        continue
+                                    protected_lao_candidates.append(
+                                        (line1, normalized_line)
+                                    )
+                                    if filler_count < 6 or non_filler_count > 2:
+                                        continue
+                                    composite = MrzAnalyzer._check_digit(
+                                        normalized_line[:10]
+                                        + normalized_line[13:20]
+                                        + normalized_line[21:43]
+                                    )
+                                    observed_tail_digits = {
+                                        trailing_digit_map.get(char, char)
+                                        for char in remainder[-4:]
+                                        if char.isdigit() or char in trailing_digit_map
+                                    }
+                                    if composite not in observed_tail_digits:
+                                        continue
+                                    repaired = normalized_line[:43] + composite
+                                    parsed = MrzAnalyzer()._parse_td3(line1, repaired)
+                                    if (
+                                        parsed.get("valid")
+                                        and parsed.get("document_check_digit_valid") is True
+                                        and parsed.get("birth_check_digit_valid") is True
+                                        and parsed.get("expiry_check_digit_valid") is True
+                                        and parsed.get("composite_check_digit_valid") is True
+                                    ):
+                                        lao_consensus_lines.append(repaired)
+                        issuer_start = normalized.find(issuer, issuer_start + 1)
+
+            # A second OCR pass may carry the long filler run and final
+            # composite glyph while changing one expiry digit. Match it to the
+            # exact, primary-check-valid core above by birth/check/sex and by a
+            # near-identical expiry field. The final composite must still be
+            # visible in this independent pass.
+            for line1, normalized_line in protected_lao_candidates:
+                birth_sex = normalized_line[13:21]
+                expected_expiry = normalized_line[21:28]
+                composite = MrzAnalyzer._check_digit(
+                    normalized_line[:10]
+                    + normalized_line[13:20]
+                    + normalized_line[21:43]
+                )
+                for evidence in consensus_fragments:
+                    evidence = MrzAnalyzer._normalize_ocr_mrz_line(evidence)
+                    anchor = evidence.find(birth_sex)
+                    if anchor < 0 or len(evidence) < anchor + 15:
+                        continue
+                    observed_expiry = evidence[anchor + 8 : anchor + 15]
+                    observed_expiry = "".join(
+                        trailing_digit_map.get(char, char)
+                        for char in observed_expiry
+                    )
+                    if sum(
+                        left != right
+                        for left, right in zip(observed_expiry, expected_expiry)
+                    ) > 1:
+                        continue
+                    remainder = evidence[anchor + 15 :]
+                    if sum(char in filler_like for char in remainder) < 6:
+                        continue
+                    observed_tail_digits = {
+                        trailing_digit_map.get(char, char)
+                        for char in remainder[-4:]
+                        if char.isdigit() or char in trailing_digit_map
+                    }
+                    if composite not in observed_tail_digits:
+                        continue
+                    repaired = normalized_line[:43] + composite
+                    parsed = MrzAnalyzer()._parse_td3(line1, repaired)
+                    if (
+                        parsed.get("valid")
+                        and parsed.get("document_check_digit_valid") is True
+                        and parsed.get("birth_check_digit_valid") is True
+                        and parsed.get("expiry_check_digit_valid") is True
+                        and parsed.get("composite_check_digit_valid") is True
+                    ):
+                        lao_consensus_lines.append(repaired)
+            for repaired in lao_consensus_lines:
+                add_candidate(repaired)
+
+            # Document-number consensus can create its strongest data-line
+            # candidate after the first nationality-repair pass above. Re-run
+            # the same narrowly bounded reconciliation on those late lines.
+            # This is required when one pass preserves every checksum but reads
+            # IND as 14D, while a separate name-line pass preserves issuer IND.
+            late_country_repairs: list[str] = []
+            for candidate in list(lines):
+                if len(candidate) != 44 or sum(char.isdigit() for char in candidate) < 8:
+                    continue
+                observed = candidate[10:13]
+                translated_observed = observed.translate(nat_table)
+                if translated_observed in corroborated_country_codes:
+                    continue
+                repairs = {
+                    code
+                    for code in corroborated_country_codes
+                    if sum(
+                        left != right
+                        for left, right in zip(translated_observed, code)
+                    ) == 1
+                }
+                if len(repairs) == 1:
+                    code = next(iter(repairs))
+                    late_country_repairs.append(
+                        candidate[:10] + code + candidate[13:]
+                    )
+            for repaired in late_country_repairs:
+                add_candidate(repaired)
+
+        # A sharp visual-zone passport number is useful independent evidence
+        # when OCR changes one printed MRZ digit into another (for example the
+        # Japanese number TT1414449 read as TT4414449). Generate every one-digit
+        # repair allowed by the MRZ's own document-number check digit, then use
+        # the visible number only when it identifies a unique candidate within
+        # one character. This cannot validate a number merely because it looks
+        # plausible; the embedded check digit remains mandatory.
+        if visible_document_numbers:
+            repaired_data_lines: list[str] = []
+            for candidate in lines:
+                if len(candidate) < 13 or not candidate[9].isdigit():
+                    continue
+                document_number = candidate[:9]
+                if MrzAnalyzer._check_digit(document_number) == candidate[9]:
+                    continue
+                exact_visual_matches = {
+                    visible
+                    for visible in visible_document_numbers
+                    if MrzAnalyzer._check_digit(visible) == candidate[9]
+                    and sum(
+                        left != right
+                        for left, right in zip(document_number, visible)
+                    )
+                    <= 1
+                }
+                if len(exact_visual_matches) == 1:
+                    repaired_data_lines.append(
+                        next(iter(exact_visual_matches)) + candidate[9:]
+                    )
+                    continue
+                repairs: set[str] = set()
+                for index, char in enumerate(document_number):
+                    if not char.isdigit():
+                        continue
+                    for replacement in "0123456789":
+                        if replacement == char:
+                            continue
+                        repaired = (
+                            document_number[:index]
+                            + replacement
+                            + document_number[index + 1 :]
+                        )
+                        if MrzAnalyzer._check_digit(repaired) == candidate[9]:
+                            repairs.add(repaired)
+                ranked = sorted(
+                    (
+                        sum(left != right for left, right in zip(repair, visible)),
+                        repair,
+                    )
+                    for repair in repairs
+                    for visible in visible_document_numbers
+                )
+                if not ranked or ranked[0][0] > 1:
+                    continue
+                best_distance = ranked[0][0]
+                best_repairs = {
+                    repair for distance, repair in ranked if distance == best_distance
+                }
+                if len(best_repairs) == 1:
+                    repaired_data_lines.append(
+                        next(iter(best_repairs)) + candidate[9:]
+                    )
+            for repaired in repaired_data_lines:
+                add_candidate(repaired)
+
+        if original_checked_document_numbers:
+            consensus_repaired_lines: list[str] = []
+            for candidate in list(lines):
+                if len(candidate) < 13 or not candidate[9].isdigit():
+                    continue
+                observed = candidate[:9]
+                if MrzAnalyzer._check_digit(observed) == candidate[9]:
+                    continue
+                ranked = sorted(
+                    (
+                        sum(left != right for left, right in zip(observed, checked)),
+                        checked,
+                    )
+                    for checked in original_checked_document_numbers
+                    if MrzAnalyzer._check_digit(checked) == candidate[9]
+                )
+                if not ranked or ranked[0][0] > 2:
+                    continue
+                best_distance = ranked[0][0]
+                best_numbers = {
+                    checked for distance, checked in ranked if distance == best_distance
+                }
+                if len(best_numbers) == 1:
+                    consensus_repaired_lines.append(
+                        next(iter(best_numbers)) + candidate[9:]
+                    )
+            for repaired in consensus_repaired_lines:
+                add_candidate(repaired)
+
+        # On otherwise readable low-resolution passports, OCR can omit the
+        # small ``P<`` prefix while preserving the issuing country and the full
+        # name line (``USAWILLIAMS<<...``). Recover that prefix only when a
+        # digit-heavy TD3 data-line candidate independently supplies the same
+        # three-letter nationality. The reconstructed line must still pair with
+        # that data line and pass the ICAO check digits in ``_select_td3_pair``.
+        issuer_votes: dict[str, int] = {}
+        for candidate in lines:
+            if len(candidate) >= 13 and sum(char.isdigit() for char in candidate) >= 8:
+                issuer = candidate[10:13].translate(nat_table)
+                if issuer.isalpha():
+                    issuer_votes[issuer] = issuer_votes.get(issuer, 0) + 1
+
+        if issuer_votes:
+            max_votes = max(issuer_votes.values())
+            likely_issuers = {
+                issuer for issuer, votes in issuer_votes.items() if votes == max_votes
+            }
+            for fragment in normalized_fragments:
+                normalized = MrzAnalyzer._normalize_ocr_mrz_line(fragment)
+                for issuer in likely_issuers:
+                    issuer_index = normalized.find(issuer, 0, 5)
+                    if issuer_index < 0:
+                        near_matches = [
+                            index
+                            for index in range(min(3, max(0, len(normalized) - 2)))
+                            if normalized[index : index + 3].isalpha()
+                            and sum(
+                                left != right
+                                for left, right in zip(
+                                    normalized[index : index + 3], issuer
+                                )
+                            )
+                            == 1
+                        ]
+                        issuer_index = near_matches[0] if len(near_matches) == 1 else -1
+                    if issuer_index < 0:
+                        continue
+                    # The issuer is supplied by line-2 consensus; retain only
+                    # the name text after the noisy issuer glyphs. Digits are
+                    # impossible in a TD3 name field and represent misread
+                    # filler chevrons, so normalize them back to fillers.
+                    suffix = issuer + normalized[issuer_index + 3 :]
+                    suffix = "".join("<" if char.isdigit() else char for char in suffix)
+                    separator = suffix.find("<<", 3)
+                    if separator < 0:
+                        # One of the two separator chevrons is commonly lost on
+                        # a dark MRZ. Promote a plausible single separator only
+                        # after line-2 consensus supplied the issuer; pairing and
+                        # check-digit validation remain mandatory downstream.
+                        single_separator = suffix.find("<", 6, 25)
+                        if single_separator >= 6:
+                            suffix = (
+                                suffix[:single_separator]
+                                + "<<"
+                                + suffix[single_separator + 1 :]
+                            )
+                            separator = single_separator
+                    if (
+                        len(suffix) < 18
+                        or separator < 6
+                    ):
+                        continue
+                    add_candidate(f"P<{suffix}")
         return lines
 
     @staticmethod
     def _normalize_ocr_mrz_line(line: str) -> str:
         if not line:
             return line
+        # A border, page edge, or security glyph can be joined to the TD3 type
+        # marker (for example ``7P<THA...`` or ``BP<THA...``). The embedded
+        # ``P<`` marker is unambiguous near the start, so discard only the one
+        # or two leading OCR artifacts before normal field normalization.
+        td3_marker = line.find("P<", 0, 4)
+        if td3_marker > 0:
+            line = line[td3_marker:]
         chars = list(line)
         if chars[0] == "P" and len(chars) > 1 and chars[1] in {"O", "0"}:
             chars[1] = "<"
@@ -654,6 +2080,30 @@ class MrzAnalyzer:
         if not line:
             return None
         if line.startswith("P<") and len(line) >= 20 and "<<" in line:
+            return line
+        # Two-letter document types (Korean "PM", Lao "PO", diplomatic "PD")
+        # produce a clean name line that is not "P<...". Keep it when it has the
+        # TD3 shape: P + type letter + 3-letter country + a "<<" name separator
+        # and essentially no digits (a name line, not the data line). Blurred
+        # filler glyphs at the end of a genuine name line can occasionally be
+        # read as a short digit run (for example ``...<S<98``). Keep that narrow
+        # case only when every digit follows the surname separator; the paired
+        # data line must still pass its ICAO check digits before MRZ validation.
+        separator = line.find("<<", 5)
+        digit_positions = [index for index, char in enumerate(line) if char.isdigit()]
+        tolerable_tail_digits = (
+            separator >= 5
+            and len(digit_positions) <= 3
+            and all(index > separator for index in digit_positions)
+        )
+        if (
+            len(line) >= 20
+            and line[0] == "P"
+            and "A" <= line[1] <= "Z"
+            and line[2:5].isalpha()
+            and separator >= 5
+            and (len(digit_positions) <= 1 or tolerable_tail_digits)
+        ):
             return line
         lao_line2 = MrzAnalyzer._recover_lao_line2_from_digit_shift(line)
         if lao_line2:
@@ -715,10 +2165,16 @@ class MrzAnalyzer:
             if "A" <= ch <= "Z":
                 counts[ch] = counts.get(ch, 0) + 1
         letters.update(letter for letter, n in counts.items() if n >= 3)
-        # Require "<<" on at least one side: genuine short name parts sit between
-        # single "<" separators, filler islands sit inside "<" runs.
-        for island in re.finditer(r"(?<=<<)([A-Z]{1,2})(?=<)|(?<=<)([A-Z]{1,2})(?=<<)", line1[5:44]):
-            letters.update(island.group(1) or island.group(2))
+        # A filler island is a 1-2 letter run followed by a filler run ("<<").
+        # Exception: when that "<<" is the primary surname/given separator
+        # itself, the letters are a genuine surname suffix ("WALKER<JR<<"),
+        # not filler -- skip only that one position.
+        field = line1[5:44]
+        separator = field.find("<<")
+        for island in re.finditer(r"(?<=<)([A-Z]{1,2})(?=<<)", field):
+            if island.end(1) == separator:
+                continue
+            letters.update(island.group(1))
         return letters
 
     @staticmethod
@@ -756,10 +2212,15 @@ class MrzAnalyzer:
             ranked = sorted(tail_letters, key=lambda letter: counts[letter], reverse=True)
             if len(ranked) == 1 or counts[ranked[0]] > counts[ranked[1]]:
                 strong.add(ranked[0])
-        # Island letters stranded inside "<" runs (genuine short name parts sit
-        # between single "<" separators, so require "<<" on one side).
-        for island in re.finditer(r"(?<=<<)([A-Z]{1,2})(?=<)|(?<=<)([A-Z]{1,2})(?=<<)", field):
-            strong.update(island.group(1) or island.group(2))
+        # Island letters stranded in the "<" filler zone: a 1-2 letter run
+        # followed by a filler run ("<<"). Exception: when that "<<" is the
+        # primary surname/given separator itself, the letters are a genuine
+        # surname suffix ("WALKER<JR<<"), not filler -- skip only that one.
+        island_separator = field.find("<<")
+        for island in re.finditer(r"(?<=<)([A-Z]{1,2})(?=<<)", field):
+            if island.end(1) == island_separator:
+                continue
+            strong.update(island.group(1))
         fillers = tail_letters | strong
 
         if fillers:
@@ -799,13 +2260,41 @@ class MrzAnalyzer:
                     break
                 field = dissolved
             field = re.sub("[" + re.escape("".join(sorted(fillers))) + "]{2,}", "<<", field)
-        parts = field.split("<<", 1)
+        # A low-resolution pass can preserve both names but damage only the
+        # surname/given-name separator. Recognize two tightly bounded forms:
+        # ``SURNAME<K<GIVEN<<<<`` (one filler became a glyph) and
+        # ``SURNAMEX<GIVEN<<<<`` (the first separator became a glyph). The long
+        # filler run after GIVEN distinguishes these from normal spaces inside
+        # a multipart surname.
+        damaged_parts: list[str] | None = None
+        embedded_glyph = re.match(r"^([A-Z]{4,20})<[A-Z]{1,2}<([A-Z]{4,20})<{4,}", field)
+        if embedded_glyph:
+            damaged_parts = [embedded_glyph.group(1), embedded_glyph.group(2)]
+        else:
+            single_separator = re.match(r"^([A-Z]{4,21})<([A-Z]{4,20})<{4,}", field)
+            if single_separator:
+                damaged_parts = [single_separator.group(1), single_separator.group(2)]
+
+        parts = damaged_parts or field.split("<<", 1)
         # When OCR ate half of the "<<" separator ("SAYPADITH<<SAVATH" read as
         # "SAYPADITHS<SAVATHS"), everything lands in the surname part and the
-        # given name comes out empty. A TD3 line always has both components, so
-        # fall back to treating the first single "<" as the separator.
-        if fillers and (len(parts) == 1 or not parts[1].strip("<")) and "<" in parts[0].strip("<"):
+        # given name comes out empty. The same happens when a later filler run
+        # is read as letters: splitting on that later "<<" leaves only known
+        # filler glyphs on the right ("THUMMANEEX<THANITR<<<<...OCKK"). A TD3
+        # line always has both components, so in either case treat the first
+        # single "<" as the damaged surname/given separator. A real multipart
+        # surname remains safe because its right side contains a substantive
+        # given-name token rather than filler-only OCR noise.
+        tail_is_filler = False
+        if len(parts) > 1:
+            tail_letters_only = re.sub(r"[^A-Z]", "", parts[1])
+            tail_is_filler = bool(tail_letters_only) and all(ch in fillers for ch in tail_letters_only)
+        if fillers and (len(parts) == 1 or not parts[1].strip("<") or tail_is_filler) and "<" in parts[0].strip("<"):
             parts = parts[0].split("<", 1)
+        elif len(parts) > 1 and not parts[1].strip("<"):
+            damaged_separator = re.fullmatch(r"([A-Z]{4,20})<[A-Z]{1,2}<([A-Z]{4,20})", parts[0].strip("<"))
+            if damaged_separator:
+                parts = [damaged_separator.group(1), damaged_separator.group(2)]
         surname = MrzAnalyzer._clean_name_segment(parts[0])
         # Collapsing filler runs can leave stray "<" at the head of the given
         # segment; a genuine segment never starts with "<", so strip them or the
@@ -821,24 +2310,44 @@ class MrzAnalyzer:
         return surname, given
 
     @staticmethod
-    def _realign_td3_line1(line1: str) -> str:
+    def _realign_td3_line1(line1: str, consensus_nat: str | None = None) -> str:
         """Undo a spurious doubled leading type character.
 
         OCR sometimes reads the line-1 prefix "POLAO..." as "PPOLAO...", which
         shifts the 3-letter issuing country and every name character one place to
-        the right (surname "CHANTHABANDITH" -> "OCHANTHABANDITH"). "PP" is not a
-        valid TD3 document type, so when the second character repeats the "P"
-        marker and dropping it yields a clean "P" + subtype + 3-letter country,
-        we realign. Line 1 carries no check digit, so this positional cue is the
-        only self-correction available for the name field."""
+        the right (surname "CHANTHABANDITH" -> "OCHANTHABANDITH"). Because "PP"
+        is also a legitimate national subtype, paired-country consensus must
+        preserve it when the original country field is corroborated. Line 1
+        carries no check digit, so this positional cue is the only bounded
+        self-correction available for the name field."""
         if len(line1) >= 6 and line1[1] == "P":
+            # PP is also a legitimate national document subtype (for example,
+            # Japanese ordinary passports). Keep it when its country field is
+            # corroborated by the paired data-line candidates.
+            if consensus_nat and line1[2:5] == consensus_nat:
+                return line1
             shifted = (line1[1:] + "<")[:44]
+            if consensus_nat:
+                return shifted if shifted[2:5] == consensus_nat else line1
             if shifted[1] != "P" and shifted[2:5].isalpha():
                 return shifted
         return line1
 
     def _select_td3_pair(self, lines: list[str]) -> tuple[str, str, dict[str, Any]] | None:
         best: tuple[float, int, int, str, str, dict[str, Any]] | None = None
+        # Consensus issuing country across the data-line candidates: the 3-letter
+        # code at positions 10-12 (digit look-alikes mapped back to letters). A
+        # line-1 whose country matches this consensus is far more trustworthy
+        # than one carrying an OCR-invented country ("MRO"), which no data line
+        # corroborates.
+        nat_table = str.maketrans({"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B", "4": "A", "6": "G"})
+        nat_votes: dict[str, int] = {}
+        for candidate in lines:
+            if len(candidate) >= 13 and sum(ch.isdigit() for ch in candidate) >= 8:
+                code = candidate[10:13].translate(nat_table)
+                if code.isalpha():
+                    nat_votes[code] = nat_votes.get(code, 0) + 1
+        consensus_nat = max(nat_votes, key=lambda key: nat_votes[key]) if nat_votes else None
         for line1_index, line1 in enumerate(lines):
             # ICAO TD3 line 1 is "P" + a type subcategory + 3-letter issuing
             # country + names. The subcategory may be "<" OR a national subtype
@@ -847,30 +2356,118 @@ class MrzAnalyzer:
             # passport before its check digits were ever evaluated. The name line
             # is alphabetic, so a digit-count guard still separates it from the
             # digit-heavy data line (whose positions 1+ are the document number).
-            if not line1 or line1[0] != "P" or "<<" not in line1:
+            # Malaysian TD3 passports can place the holder's complete legal
+            # name in one identifier field, separated only by single filler
+            # chevrons (``P<MYSWAN<DALILA<...``). There is no surname/given
+            # ``<<`` boundary on those documents. Accept that country-specific
+            # form only when it has a credible name-field shape; the paired
+            # data line must still pass every ICAO check below.
+            standard_name_field = "<<" in line1
+            malaysian_single_field = (
+                line1[2:5] == "MYS"
+                and line1.count("<") >= 5
+                and not any(char.isdigit() for char in line1[:42])
+            )
+            if not line1 or line1[0] != "P" or not (standard_name_field or malaysian_single_field):
                 continue
             if not (line1[1] == "<" or "A" <= line1[1] <= "Z"):
                 continue
-            if sum(ch.isdigit() for ch in line1) > 5:
+            # A low-resolution name line can render terminal filler chevrons as
+            # digits even though the paired data line is perfectly readable.
+            # Permit a small tail-only run after the surname separator; digits
+            # in the issuer/surname portion still disqualify the candidate.
+            separator = line1.find("<<", 5)
+            digit_positions = [index for index, char in enumerate(line1) if char.isdigit()]
+            tail_digit_noise = (
+                separator >= 5
+                and len(digit_positions) <= 8
+                and all(index > separator for index in digit_positions)
+            )
+            if len(digit_positions) > 5 and not tail_digit_noise:
                 continue
-            line1 = self._realign_td3_line1(line1)
+            line1 = self._realign_td3_line1(line1, consensus_nat)
             for line2_index, line2 in enumerate(lines):
                 if line1_index == line2_index:
                     continue
                 parsed = self._parse_td3(line1, line2)
+                observed_nationality = line2[10:13].translate(nat_table)
+                # For the passport-only TD3 flow, issuing state (line 1) and
+                # nationality (line 2) must corroborate. Nationality has no
+                # check digit, so permitting a valid date/number tail to pair
+                # with an unrelated noisy name line can produce a fully checked
+                # but wrong identity. Normalize only common OCR look-alikes and
+                # reject that cross-country pairing before scoring.
+                if (
+                    parsed.get("valid")
+                    and observed_nationality.isalpha()
+                    and line1[2:5].isalpha()
+                    and line1[2:5] != observed_nationality
+                ):
+                    continue
+                # OCR can accidentally combine visible-zone words into two
+                # 44-character lines. If an invalid pair yields neither TD3 date,
+                # it is not credible MRZ evidence; let the visible-field fallback
+                # handle the document instead of producing a hard mismatch.
+                if (
+                    not parsed["valid"]
+                    and parsed.get("date_of_birth") is None
+                    and parsed.get("expiry_date") is None
+                ):
+                    continue
+                # A two-letter document type ("PM", "PD") is only accepted from
+                # OCR when the pair yields a parseable expiry date. This keeps
+                # the newly-allowed types (Korean "PMKOR...") from promoting pure
+                # garbage name lines into a false MRZ read, while the generic
+                # "P<" path keeps its softer, evidence-based fallback behavior.
+                if line1[1] != "<" and parsed.get("expiry_date") is None:
+                    continue
                 score = 0.0
                 score += 10.0 if parsed["valid"] else 0.0
                 score += 4.0 if parsed["format_valid"] else 0.0
                 score += 3.0 if parsed["check_digits_valid"] else 0.0
+                # A clean TD3 data line carries optional-data and composite
+                # check digits in addition to the three primary checks. Prefer
+                # that stronger evidence over a truncated line that happens to
+                # collide on the primary digits.
+                score += 5.0 if parsed.get("optional_check_digit_valid") is True else 0.0
+                score += 5.0 if parsed.get("composite_check_digit_valid") is True else 0.0
+                score += 2.0 if parsed.get("sex") in {"M", "F", "<"} else -2.0
                 score += 1.0 if parsed.get("expiry_date") else 0.0
                 score += 0.4 if line2_index > line1_index else 0.0
                 score += max(0.0, 1.0 - abs((line2_index - line1_index) - 1) * 0.18)
                 score += min(len(str(parsed.get("full_name") or "")) / 5.0, 5.0)
+                # Prefer a clearly read surname/given-name separator. Missing
+                # separators merge both names through OCR artifacts such as
+                # ``...KARNSKAISAWAN...`` and can otherwise win merely because
+                # the corrupted name is longer.
+                name_separator = line1.find("<<", 5)
+                if parsed["valid"] and 7 <= name_separator <= 24:
+                    score += 10.0
+                # A single filler between two substantial given-name tokens is
+                # meaningful (TIMOTHY<GEORG), not tail padding. Prefer it over
+                # an equally valid pass that merges the names through a noisy
+                # filler glyph (TIMOTHYCGEORG).
+                name_field = line1[name_separator + 2 :] if name_separator >= 0 else ""
+                if re.search(r"[A-Z]{3,}<[A-Z]{3,}", name_field):
+                    score += 2.0
                 # Prefer cleanly-read lines: a candidate whose filler zone is
                 # littered with misread letters is less trustworthy, and its
                 # junk can inflate the name-length bonus (a bled "S" makes the
                 # name longer, outscoring the clean read of the same passport).
                 score -= 0.75 * len(self._filler_letters(line1))
+                # Corroborate the line-1 country against the data-line consensus.
+                if consensus_nat and line1[2:5].isalpha():
+                    score += 4.0 if line1[2:5] == consensus_nat else -4.0
+                parsed_nat = str(parsed.get("nationality") or "")
+                if parsed_nat.isalpha() and len(parsed_nat) == 3 and line1[2:5].isalpha():
+                    score += 6.0 if line1[2:5] == parsed_nat else -6.0
+                # Between two otherwise-equal data lines, prefer the one whose
+                # nationality field was read as clean letters (no digit
+                # look-alikes) -- a proxy for the cleaner overall read, which
+                # breaks ties like a document number "M..." vs "W..." that share
+                # a check digit.
+                if line2[10:13].isalpha():
+                    score += 1.5
                 candidate = (score, line1_index, line2_index, line1, line2, parsed)
                 if best is None or candidate > best:
                     best = candidate
@@ -919,13 +2516,24 @@ class MrzAnalyzer:
         # 2-4) are the same ICAO 3-letter state code. It is alphabetic by spec,
         # so when OCR mangles the line-2 value into non-letters (e.g. LAO -> 1OO)
         # but the line-1 issuer is a clean 3-letter code, use the issuer.
-        nationality = line2[10:13].replace("<", "")
+        nationality = line2[10:13].translate(
+            str.maketrans({"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B", "4": "A", "6": "G"})
+        ).replace("<", "")
         issuer = line1[2:5]
         if not nationality.isalpha() and issuer.isalpha():
             nationality = issuer
 
-        surname, given = self._extract_mrz_names(line1, nationality if nationality.isalpha() and len(nationality) == 3 else None)
-        full_name = " ".join(part for part in [given, surname] if part).strip() or None
+        if issuer == "MYS" and "<<" not in line1[5:]:
+            # Malaysian passports may encode the complete name as a single
+            # identifier. Preserve its printed order instead of forcing a
+            # surname/given-name split that is absent from the MRZ.
+            full_name = self._clean_name_segment(line1[5:44]) or None
+        else:
+            surname, given = self._extract_mrz_names(
+                line1,
+                nationality if nationality.isalpha() and len(nationality) == 3 else None,
+            )
+            full_name = " ".join(part for part in [given, surname] if part).strip() or None
 
         parsed_birth = self._parse_mrz_date(birth, allow_future=False)
         parsed_expiry = self._parse_mrz_date(expiry, allow_future=True)
@@ -963,13 +2571,34 @@ class MrzAnalyzer:
         "T": ("7", "1"),
         "E": ("8", "6"),
         "A": ("4",),
+        # Adjacent vertical strokes merge in low-light MRZ captures. These are
+        # only tried for the alphanumeric document number after its own check
+        # digit rejects the original OCR text.
+        "N": ("M",),
+        "H": ("M", "N"),
     }
 
     @staticmethod
     def _normalize_td3_fields(line1: str, line2: str) -> tuple[str, str]:
         chars = list(line2)
-        numeric_positions = set(range(2, 10)) | set(range(13, 20)) | set(range(21, 28)) | {42, 43}
-        digit_map = {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8"}
+        # TD3 document numbers are alphanumeric. Do not eagerly turn a valid
+        # letter such as Q in PAQ172270 into zero; preserve the original field
+        # first and only try OCR look-alikes when its own check digit fails.
+        numeric_positions = {9} | set(range(13, 20)) | set(range(21, 28)) | {42, 43}
+        digit_map = {
+            "O": "0",
+            "Q": "0",
+            "D": "0",
+            "I": "1",
+            "L": "1",
+            "Z": "2",
+            "S": "5",
+            "B": "8",
+            "G": "6",
+            "T": "7",
+            "E": "8",
+            "A": "4",
+        }
         for index in numeric_positions:
             if index < len(chars) and chars[index] in digit_map:
                 chars[index] = digit_map[chars[index]]
@@ -990,7 +2619,26 @@ class MrzAnalyzer:
                 continue
             for index in range(start, end):
                 original = line2[index] if index < len(line2) else "<"
-                for alternative in MrzAnalyzer._DIGIT_ALTERNATIVES.get(original, ())[1:]:
+                alternatives = MrzAnalyzer._DIGIT_ALTERNATIVES.get(original, ())
+                if start == 0:
+                    # Passport numbers are alphanumeric, so a check digit alone
+                    # is not enough evidence for ambiguous second-choice
+                    # substitutions such as B -> 3. Keep only the most likely
+                    # glyph repair, except for the observed N/H -> M merge in
+                    # low-light Japanese captures. Cross-pass corroboration can
+                    # still restore a different leading letter when another OCR
+                    # pass read the checked number cleanly.
+                    if original == "N":
+                        alternatives = ("M",)
+                    elif original == "H":
+                        alternatives = ("M", "N")
+                    else:
+                        alternatives = alternatives[:1]
+                else:
+                    # Date fields already received their most likely digit
+                    # mapping above, so only try the remaining alternatives.
+                    alternatives = alternatives[1:]
+                for alternative in alternatives:
                     candidate = field[: index - start] + alternative + field[index - start + 1 :]
                     if MrzAnalyzer._check_digit(candidate) == chars[check_pos]:
                         chars[index] = alternative
@@ -1007,9 +2655,12 @@ class MrzAnalyzer:
         # start the MRZ filler area; OCR can hallucinate letters inside that
         # filler, so ignore anything after the filler starts.
         meaningful = re.split(r"<{2,}", segment, maxsplit=1)[0]
-        tokens = [token for token in meaningful.split("<") if token]
-        if len(tokens) > 1 and len(tokens[-1]) == 1:
-            tokens = tokens[:-1]
+        # ICAO name fields contain letters and filler separators, never digits.
+        # Drop digit-bearing OCR debris and any stranded one-letter tail that
+        # precedes it (for example ``...CARLOS<S<98``).
+        tokens = [token for token in meaningful.split("<") if token and token.isalpha()]
+        while len(tokens) > 1 and len(tokens[-1]) == 1:
+            tokens.pop()
         return " ".join(tokens).strip() or ""
 
     @staticmethod
@@ -1464,6 +3115,7 @@ class RiskScorer:
             "BLUR_DETECTED",
             "NON_DOCUMENT_UPLOAD",
             "MRZ_NOT_READ",
+            "MRZ_NOT_CONFIDENT",
             "MRZ_INVALID",
             "MRZ_CHECK_DIGIT_MISMATCH",
             "PASSPORT_EXPIRED",
@@ -1537,6 +3189,8 @@ class PassportFraudAnalyzer:
         document = self.document.analyze(context)
         extracted_text = ocr_text if ocr_text is not None else self.ocr.extract(context, document_type="passport")
         ocr = self.mrz.analyze(context, ocr_text=extracted_text)
+        if ocr_text is None and not context.checks.get("mrz_found"):
+            self._flag_if_mirrored(context, extracted_text)
         forensic = self.forensics.analyze(context)
         context.checks.update(
             {
@@ -1549,6 +3203,52 @@ class PassportFraudAnalyzer:
         context.checks.update(model_result.checks)
         context.signals.extend(model_result.signals)
         return self.scorer.score(context, quality, document, forensic, model_result, ocr)
+
+    def _flag_if_mirrored(self, context: FraudContext, original_text: str | None) -> None:
+        """When the MRZ cannot be read, check whether the image was presented
+        mirrored / reversed -- typically a front (selfie) camera flipping the
+        frame, so the passport text and MRZ read backwards. We horizontally flip
+        the image and re-read. The document is labelled mirrored only when the
+        flipped image yields a fully check-digit-valid MRZ. Filler counts and an
+        invalid MRZ-like pair are diagnostics, not proof of reversal.
+
+        Emits a specific retake signal instead of a generic "MRZ not read"."""
+        try:
+            flipped = context.image.transpose(Image.FLIP_LEFT_RIGHT)
+        except (OSError, ValueError):
+            return
+        probe = FraudContext(
+            content=context.content,
+            filename=context.filename,
+            image=flipped,
+            width=flipped.width,
+            height=flipped.height,
+            format=context.format,
+            exif_count=0,
+        )
+        flipped_text = self.ocr.extract(probe, document_type="passport") or ""
+        self.mrz.analyze(probe, ocr_text=flipped_text)
+
+        flip_fillers = flipped_text.count("<")
+        original_fillers = (original_text or "").count("<")
+        mirrored = bool(
+            probe.checks.get("mrz_found")
+            and probe.checks.get("mrz_check_digits_valid") is True
+        )
+        context.checks["document_mirror_flip_fillers"] = flip_fillers
+        context.checks["document_mirror_original_fillers"] = original_fillers
+        if mirrored:
+            context.checks["document_mirrored"] = True
+            context.signals.append(
+                _signal(
+                    "DOCUMENT_MIRRORED",
+                    "The passport looks mirrored or reversed — its text and code read backwards. "
+                    "If you used a front (selfie) camera it flipped the image; hold the photo page "
+                    "facing the camera and retake.",
+                    "high",
+                    0.85,
+                )
+            )
 
 
 class LaoIdCardFraudAnalyzer:

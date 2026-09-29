@@ -2,6 +2,8 @@ import type { HandsConfig, InputMap, NormalizedLandmarkList, Options, Results, R
 import { Camera, CameraOff, Check, Hand, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Challenge } from "../lib/api";
+import { challengeInstruction, challengePrompt } from "../lib/lao";
+import { L } from "../lib/i18n";
 import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
 
 type HandsInstance = {
@@ -43,7 +45,7 @@ type FingerState = {
 
 interface HandGestureCaptureProps {
   challenges: Challenge[];
-  onComplete: (challenge: Challenge, allDone: boolean) => void;
+  onComplete: (challenge: Challenge, allDone: boolean, frames: Blob[]) => Promise<boolean>;
 }
 
 const emptyMetric: GestureMetric = {
@@ -60,6 +62,26 @@ const emptyMetric: GestureMetric = {
     pinky: false
   }
 };
+
+async function captureGestureFrames(video: HTMLVideoElement | null, count: number): Promise<Blob[]> {
+  // Face evidence for identity binding: the backend checks these against the
+  // passport portrait so the gesture cannot be performed by a different person.
+  const frames: Blob[] = [];
+  if (!video || video.readyState < 2 || !video.videoWidth) return frames;
+  for (let index = 0; index < count; index += 1) {
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 640 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) break;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (blob) frames.push(blob);
+    if (index < count - 1) await new Promise((resolve) => window.setTimeout(resolve, 90));
+  }
+  return frames;
+}
 
 export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -97,7 +119,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
       setCameraReady(true);
       setFullscreen(true);
     } catch (error) {
-      setError(cameraErrorMessage(error, "Camera permission is required for the gesture challenge."));
+      setError(cameraErrorMessage(error, L("ຕ້ອງອະນຸຍາດໃຊ້ກ້ອງສຳລັບຂັ້ນຕອນທ່າທາງມື.", "Camera permission is required for the gesture challenge.")));
       setCameraReady(false);
     }
   };
@@ -144,7 +166,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
         if (!disposed) setModelReady(true);
       })
       .catch(() => {
-        if (!disposed) setError("Hand gesture model could not be loaded.");
+        if (!disposed) setError(L("ບໍ່ສາມາດໂຫຼດແບບຈຳລອງກວດມືໄດ້.", "Hand gesture model could not be loaded."));
       });
 
     return () => {
@@ -206,8 +228,16 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
         if (next >= 100 && completionLockRef.current !== currentChallenge.id) {
           completionLockRef.current = currentChallenge.id;
           const remainingAfterThis = challenges.filter((challenge) => !challenge.passed && challenge.id !== currentChallenge.id).length;
-          window.setTimeout(() => {
-            onComplete(currentChallenge, remainingAfterThis === 0);
+          window.setTimeout(async () => {
+            const frames = await captureGestureFrames(videoRef.current, 2);
+            const accepted = await onComplete(currentChallenge, remainingAfterThis === 0, frames);
+            if (!accepted) {
+              // Release the lock so the gesture can be retried -- otherwise a
+              // rejected attempt would leave this challenge permanently stuck.
+              completionLockRef.current = null;
+              setHoldProgress(0);
+              return;
+            }
             if (remainingAfterThis === 0) {
               stopCamera();
             }
@@ -225,33 +255,33 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
       <div className="gesture-instructions">
         <button className="primary-button wide" type="button" onClick={startCamera} disabled={!currentChallenge}>
           <Camera size={18} />
-          Open full-screen camera
+{L("ເປີດກ້ອງເຕັມຈໍ", "Open full-screen camera")}
         </button>
         {!modelReady && !error && (
           <p className="gesture-loading-note" aria-live="polite">
-            Preparing the hand detector… you can open the camera now; detection starts in a moment.
+            {L("ກຳລັງກຽມລະບົບກວດມື… ທ່ານເປີດກ້ອງໄດ້ເລີຍ, ການກວດຈະເລີ່ມໃນອີກບໍ່ດົນ.", "Preparing the hand detector… you can open the camera now; detection starts in a moment.")}
           </p>
         )}
         {error && <p className="form-error" aria-live="polite">{error}</p>}
       </div>
 
-      <div className="gesture-list" aria-label="Hand gesture challenges">
+      <div className="gesture-list" aria-label={L("ທ່າທາງມື", "Hand gesture challenges")}>
         {challenges.map((challenge) => {
           const isCurrent = currentChallenge?.id === challenge.id;
           return (
             <div className={`gesture-card ${challenge.passed ? "passed" : ""} ${isCurrent ? "current" : ""}`} key={challenge.id}>
               <span>
                 <GestureVisual className="gesture-card-visual" challengeId={challenge.id} />
-                {challenge.passed ? <Check size={16} /> : challenge.prompt}
+                {challenge.passed ? <Check size={16} /> : challengePrompt(challenge)}
               </span>
-              <small>{challenge.passed ? "Completed" : isCurrent ? challenge.instruction : "Waiting for previous gesture"}</small>
+              <small>{challenge.passed ? L("ສຳເລັດແລ້ວ", "Completed") : isCurrent ? challengeInstruction(challenge) : L("ລໍຖ້າທ່າກ່ອນໜ້າ", "Waiting for previous gesture")}</small>
             </div>
           );
         })}
       </div>
 
       {fullscreen && (
-        <div className="gesture-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen hand gesture challenge">
+        <div className="gesture-fullscreen" role="dialog" aria-modal="true" aria-label={L("ທ່າທາງມືແບບເຕັມຈໍ", "Full-screen hand gesture challenge")}>
           <video ref={videoRef} autoPlay playsInline muted />
           <div
             className={`gesture-target ${gestureMatched ? "matched" : handInsideTarget ? "inside" : ""}`}
@@ -273,16 +303,16 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
           </div>
           <div className="gesture-topbar">
             <div>
-              <strong>{currentChallenge?.prompt ?? "Gesture complete"}</strong>
-              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched, currentChallenge?.instruction) : "Loading hand model"}</span>
+              <strong>{challengePrompt(currentChallenge) ?? L("ເຮັດທ່າຄົບແລ້ວ", "Gesture complete")}</strong>
+              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched, challengeInstruction(currentChallenge)) : L("ກຳລັງໂຫຼດແບບຈຳລອງກວດມື", "Loading hand model")}</span>
             </div>
-            <button className="icon-button" type="button" onClick={stopCamera} aria-label="Close gesture camera">
+            <button className="icon-button" type="button" onClick={stopCamera} aria-label={L("ປິດກ້ອງ", "Close gesture camera")}>
               <X size={22} />
             </button>
           </div>
           <div className="gesture-debug-pill">
             <Hand size={16} />
-            {currentChallenge ? `${currentChallenge.prompt} | ${metric.handPresent ? `${metric.gesture ?? `${metric.fingerCount} fingers`} detected` : "Show your hand"}` : "Gesture complete"}
+            {currentChallenge ? `${challengePrompt(currentChallenge)} | ${metric.handPresent ? L(`ກວດພົບ ${metric.gesture ?? `${metric.fingerCount} ນິ້ວ`}`, `${metric.gesture ?? `${metric.fingerCount} fingers`} detected`) : L("ສະແດງມືຂອງທ່ານ", "Show your hand")}` : L("ເຮັດທ່າຄົບແລ້ວ", "Gesture complete")}
           </div>
         </div>
       )}
@@ -367,7 +397,18 @@ function classifyGesture(
     [8, 12, 16, 20].every((tip) => distance(landmarks[tip], landmarks[4]) < palmWidth * 0.55);
   if (pinched) return "pinched_fingers";
 
-  const ok = thumbIndexDistance < palmWidth * 0.38;
+  // MediaPipe often shifts one fingertip behind the other when the OK circle
+  // is viewed edge-on. Accept a comfortably near thumb/index pair, and use
+  // the adjacent joints as an occlusion fallback. Requiring two outer fingers
+  // to remain open keeps an ordinary fist or folded-thumb pose from passing.
+  const openOuterFingerCount = [fingers.middle, fingers.ring, fingers.pinky].filter(Boolean).length;
+  const directOkContact = thumbIndexDistance < palmWidth * 0.62;
+  const definiteTipContact = thumbIndexDistance < palmWidth * 0.3;
+  const occludedOkContact = Math.min(
+    distance(landmarks[4], landmarks[7]),
+    distance(landmarks[3], landmarks[8])
+  ) < palmWidth * 0.5;
+  const ok = definiteTipContact || (openOuterFingerCount >= 2 && (directOkContact || occludedOkContact));
   if (ok) return "ok";
 
   const crossed =
@@ -431,10 +472,10 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 function fullscreenInstruction(metric: GestureMetric, inside: boolean, matched: boolean, instruction?: string) {
-  if (matched) return "Matched. Passing gesture...";
-  if (!metric.handPresent) return "Show your hand inside the circle.";
-  if (!inside) return "Move your hand into the circle.";
-  return instruction ?? "Gesture detected in circle. Adjust fingers to match the prompt.";
+  if (matched) return L("ຖືກຕ້ອງ. ກຳລັງຜ່ານ...", "Matched. Passing gesture...");
+  if (!metric.handPresent) return L("ສະແດງມືພາຍໃນວົງມົນ.", "Show your hand inside the circle.");
+  if (!inside) return L("ເລື່ອນມືເຂົ້າໄປໃນວົງມົນ.", "Move your hand into the circle.");
+  return instruction ?? L("ກວດພົບມືໃນວົງມົນ. ປັບນິ້ວໃຫ້ກົງກັບທ່າທີ່ກຳນົດ.", "Gesture detected in circle. Adjust fingers to match the prompt.");
 }
 
 function gestureVisual(challengeId?: string) {
