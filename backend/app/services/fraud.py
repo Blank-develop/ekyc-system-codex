@@ -1144,7 +1144,7 @@ class MrzAnalyzer:
                 for source_line in text.splitlines()
                 if "<" in source_line
             ]
-            pair_repairs: list[tuple[int, float, str, int]] = []
+            pair_repairs: list[tuple[int, int, float, str, int]] = []
             for left, right in zip(standalone_name_lines, standalone_name_lines[1:]):
                 pair = {left, right}
                 exact = [index for index, token in enumerate(corrected) if token in pair]
@@ -1173,9 +1173,20 @@ class MrzAnalyzer:
                 if len(missing) < 3:
                     continue
                 other_index = 1 - exact[0]
+                # Do not degrade an identity token already supported by both
+                # the visual zone and an MRZ-bearing OCR pass. A single clean
+                # visual read is enough when the MRZ independently agrees;
+                # nearby page text such as OVER must not displace that name.
+                current_other = corrected[other_index]
+                if (
+                    current_other in standalone_name_lines
+                    and any(current_other in line for line in mrz_source_lines)
+                ):
+                    continue
                 if corrected[other_index] not in pair:
                     pair_repairs.append(
                         (
+                            len(corrected[exact[0]]),
                             len(missing),
                             SequenceMatcher(None, corrected[other_index], missing).ratio(),
                             missing,
@@ -1183,7 +1194,7 @@ class MrzAnalyzer:
                         )
                     )
             if pair_repairs:
-                _, _, missing, other_index = max(pair_repairs)
+                _, _, _, missing, other_index = max(pair_repairs)
                 corrected[other_index] = missing
         return " ".join(corrected)
 

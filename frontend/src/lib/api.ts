@@ -1,4 +1,5 @@
 import { getAuthToken } from "./auth";
+import { L } from "./i18n";
 
 export type Decision = "pending" | "passed" | "rejected";
 export type ChallengeType = "active_liveness" | "hand_gesture";
@@ -76,6 +77,46 @@ export interface AttemptSummary {
   passed: number;
   pending: number;
   rejected: number;
+}
+
+export interface WatchlistHit {
+  id: string;
+  session_id: string;
+  user_id: string | null;
+  subject_id: string;
+  subject_name: string;
+  matched_on: string;
+  matched_value: string | null;
+  confidence: number;
+  severity: string;
+  reason: string | null;
+  status: "pending" | "confirmed" | "dismissed";
+  created_at: string | null;
+  adjudicated_by: string | null;
+  adjudicated_at: string | null;
+  note: string | null;
+  has_probe?: boolean;
+}
+
+export interface WatchlistSummary {
+  enabled: boolean;
+  subject_count: number;
+  active_subject_count: number;
+  pending_hits: number;
+  total_hits: number;
+}
+
+export interface WatchlistSubject {
+  id: string;
+  full_name: string;
+  date_of_birth: string | null;
+  nationality: string | null;
+  passport_numbers: string[];
+  reason: string | null;
+  source: string | null;
+  active: boolean;
+  added_at: string | null;
+  has_face: boolean;
 }
 
 export interface EvidenceFrame {
@@ -221,6 +262,7 @@ export interface VerificationResult {
   };
   active_challenges: Challenge[];
   hand_challenges: Challenge[];
+  watchlist_blocked?: boolean;
   session_token?: string | null;
 }
 
@@ -311,7 +353,7 @@ const request = async <T>(path: string, init: RequestOptions = {}): Promise<T> =
 
 const readableApiError = async (response: Response) => {
   const message = await response.text();
-  return message || `Request failed with status ${response.status}.`;
+  return message || L(`ຄຳຮ້ອງຂໍບໍ່ສຳເລັດ (ລະຫັດ ${response.status}).`, `Request failed with status ${response.status}.`);
 };
 
 const isRetryableNetworkError = (error: unknown) => {
@@ -320,12 +362,12 @@ const isRetryableNetworkError = (error: unknown) => {
 
 const normalizeNetworkError = (error: unknown) => {
   if (error instanceof DOMException && error.name === "AbortError") {
-    return new Error("The server took too long to respond. Render may be waking up, please try again.");
+    return new Error(L("ເຊີບເວີຕອບສະໜອງຊ້າເກີນໄປ. ກະລຸນາລອງໃໝ່.", "The server took too long to respond. Render may be waking up, please try again."));
   }
   if (error instanceof TypeError) {
-    return new Error("Could not reach the verification server. Check your connection and try again.");
+    return new Error(L("ບໍ່ສາມາດເຊື່ອມຕໍ່ເຊີບເວີໄດ້. ກວດການເຊື່ອມຕໍ່ ແລ້ວລອງໃໝ່.", "Could not reach the verification server. Check your connection and try again."));
   }
-  return error instanceof Error ? error : new Error("Something went wrong.");
+  return error instanceof Error ? error : new Error(L("ເກີດຂໍ້ຜິດພາດ.", "Something went wrong."));
 };
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -483,7 +525,7 @@ export const api = {
     const response = await fetch(`${API_BASE_URL}/api/evidence/frame/${frameId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
-    if (!response.ok) throw new Error("Evidence frame could not be loaded.");
+    if (!response.ok) throw new Error(L("ບໍ່ສາມາດໂຫຼດຮູບຫຼັກຖານໄດ້.", "Evidence frame could not be loaded."));
     return URL.createObjectURL(await response.blob());
   },
 
@@ -509,6 +551,68 @@ export const api = {
       method: "POST",
       retries: 1
     }),
+
+  watchlistSummary: () => request<WatchlistSummary>("/api/watchlist/summary", { retries: 1 }),
+
+  watchlistHits: (status?: string) =>
+    request<{ hits: WatchlistHit[] }>(
+      `/api/watchlist/hits${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+      { retries: 1 }
+    ),
+
+  watchlistSubjects: () =>
+    request<{ subjects: WatchlistSubject[] }>("/api/watchlist/subjects?limit=500", { retries: 1 }),
+
+  removeWatchlistSubject: (subjectId: string) =>
+    request<{ deleted: boolean; subject_id: string }>(`/api/watchlist/subjects/${subjectId}`, {
+      method: "DELETE",
+      retries: 1
+    }),
+
+  adjudicateWatchlistHit: (hitId: string, status: "confirmed" | "dismissed", note?: string) =>
+    request<{ ok: boolean; hit_id: string; status: string }>(
+      `/api/watchlist/hits/${hitId}/adjudicate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, note }),
+        retries: 1
+      }
+    ),
+
+  addWatchlistFace: async (fullName: string, file: File, reason?: string) => {
+    const token = getAuthToken();
+    const body = new FormData();
+    body.append("full_name", fullName);
+    if (reason) body.append("reason", reason);
+    body.append("file", file);
+    const response = await fetch(`${API_BASE_URL}/api/watchlist/subjects/face`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body
+    });
+    if (!response.ok) throw new Error(await readableApiError(response));
+    return response.json();
+  },
+
+  // Auth-fetched image blobs for the officer side-by-side.
+  watchlistSubjectPhotoUrl: async (subjectId: string): Promise<string> => {
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/api/watchlist/subjects/${subjectId}/photo`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!response.ok) throw new Error("photo unavailable");
+    return URL.createObjectURL(await response.blob());
+  },
+
+  watchlistHitProbeUrl: async (hitId: string): Promise<string> => {
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/api/watchlist/hits/${hitId}/probe`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!response.ok) throw new Error("probe unavailable");
+    return URL.createObjectURL(await response.blob());
+  },
 
   // --- Consent + self-service data rights (GDPR) -----------------------------
 

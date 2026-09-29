@@ -145,6 +145,21 @@ class Settings(BaseModel):
     # a 5-year archive near 1.4 TB instead of several times that.
     evidence_max_frame_px: int = _int_env("LALIGENCE_EVIDENCE_MAX_FRAME_PX", 1280)
     evidence_jpeg_quality: int = _int_env("LALIGENCE_EVIDENCE_JPEG_QUALITY", 80)
+    # --- Watchlist ("blacklist") screening (border / immigration) -------------
+    # OFF by default. When enabled, each document read is screened against the
+    # government-supplied watchlist (biographic leg: passport number + name/DOB)
+    # and a hit raises an officer alert. Name matches must clear this similarity
+    # ratio (0-1); a corroborating date of birth is required unless the name is
+    # near-exact, keeping false positives (which accuse innocent travellers) low.
+    watchlist_enabled: bool = _bool_env("LALIGENCE_WATCHLIST_ENABLED", False)
+    watchlist_name_similarity: float = _float_env("LALIGENCE_WATCHLIST_NAME_SIMILARITY", 0.85)
+    # Face (biometric) leg. A 1:N cosine similarity (mapped to 0-1, same scale as
+    # the selfie<->document match) at or above this raises a face alert. Set well
+    # above the 1:1 pass point (~0.68) because a false face hit accuses an
+    # innocent traveller; officers always confirm via side-by-side, never auto-deny.
+    watchlist_face_threshold: float = _float_env("LALIGENCE_WATCHLIST_FACE_THRESHOLD", 0.75)
+    # Where encrypted watchlist enrolment photos and probe images are kept.
+    watchlist_root: str = _str_env("LALIGENCE_WATCHLIST_ROOT", "watchlist")
     # Tamper-evident audit log (hash-chained). Keyed with a key derived from
     # LALIGENCE_ENCRYPTION_KEY when set. On by default; records auth, PII access,
     # admin actions, and identity enrollment/decisions (no raw PII/biometrics).

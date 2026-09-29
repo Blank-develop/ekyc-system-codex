@@ -2,6 +2,7 @@ import { Camera, CameraOff, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
 import { analyzeVideoLighting, type LightingStatus } from "../lib/lighting";
+import { L } from "../lib/i18n";
 
 interface CameraCaptureProps {
   label: string;
@@ -29,7 +30,7 @@ export function CameraCapture({
   jpegQuality = 0.92,
   burstCount = 1,
   burstIntervalMs = 250,
-  captureLabel = "Capture",
+  captureLabel = L("ຖ່າຍຮູບ", "Capture"),
   hint
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -61,7 +62,7 @@ export function CameraCapture({
       }
       setCameraReady(true);
     } catch (error) {
-      setError(cameraErrorMessage(error, "Camera permission is required for this verification step."));
+      setError(cameraErrorMessage(error, L("ຕ້ອງອະນຸຍາດໃຊ້ກ້ອງສຳລັບຂັ້ນຕອນນີ້.", "Camera permission is required for this verification step.")));
       setCameraReady(false);
     }
   };
@@ -147,7 +148,7 @@ export function CameraCapture({
         {!cameraReady && (
           <div className="camera-empty">
             <CameraOff size={30} />
-            <span>Camera is off</span>
+            <span>{L("ກ້ອງປິດຢູ່", "Camera is off")}</span>
           </div>
         )}
         {cameraReady && !capturing && lightingStatus?.level === "warning" && (
@@ -160,21 +161,21 @@ export function CameraCapture({
       <div className="camera-actions">
         <button className="secondary-button" type="button" onClick={cameraReady ? stopCamera : startCamera} disabled={disabled}>
           {cameraReady ? <CameraOff size={18} /> : <Camera size={18} />}
-          {cameraReady ? "Stop camera" : "Open camera"}
+          {cameraReady ? L("ປິດກ້ອງ", "Stop camera") : L("ເປີດກ້ອງ", "Open camera")}
         </button>
         <button className="primary-button" type="button" onClick={capture} disabled={disabled || !cameraReady || capturing || lightingBlocked}>
           <RefreshCw size={18} />
-          {capturing ? `Capturing ${burstProgress}/${burstCount}` : lightingBlocked ? "Fix lighting to capture" : captureLabel}
+          {capturing ? L(`ກຳລັງຖ່າຍ ${burstProgress}/${burstCount}`, `Capturing ${burstProgress}/${burstCount}`) : lightingBlocked ? L("ປັບແສງກ່ອນຖ່າຍ", "Fix lighting to capture") : captureLabel}
         </button>
       </div>
       {lightingBlocked && (
         <button className="camera-capture-anyway" type="button" onClick={() => setLightingOverride(true)}>
-          Capture anyway
+{L("ຖ່າຍຕໍ່ໄປເລີຍ", "Capture anyway")}
         </button>
       )}
       {capturing && (
         <div className="camera-burst-status" role="status" aria-live="polite">
-          Keep your face live and steady while Kyron captures a short burst.
+          {L("ຢູ່ນິ່ງໆ ແລະ ໃຫ້ເຫັນໃບໜ້າ ຂະນະທີ່ລະບົບກຳລັງຖ່າຍຮູບຕໍ່ເນື່ອງ.", "Keep your face live and steady while Kyron captures a short burst.")}
         </div>
       )}
       {hint && cameraReady && !capturing && (

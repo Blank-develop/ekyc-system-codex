@@ -2,6 +2,8 @@ import type { HandsConfig, InputMap, NormalizedLandmarkList, Options, Results, R
 import { Camera, CameraOff, Check, Hand, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Challenge } from "../lib/api";
+import { challengeInstruction, challengePrompt } from "../lib/lao";
+import { L } from "../lib/i18n";
 import { cameraErrorMessage, cameraUnavailableMessage } from "../lib/camera";
 
 type HandsInstance = {
@@ -117,7 +119,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
       setCameraReady(true);
       setFullscreen(true);
     } catch (error) {
-      setError(cameraErrorMessage(error, "Camera permission is required for the gesture challenge."));
+      setError(cameraErrorMessage(error, L("ຕ້ອງອະນຸຍາດໃຊ້ກ້ອງສຳລັບຂັ້ນຕອນທ່າທາງມື.", "Camera permission is required for the gesture challenge.")));
       setCameraReady(false);
     }
   };
@@ -164,7 +166,7 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
         if (!disposed) setModelReady(true);
       })
       .catch(() => {
-        if (!disposed) setError("Hand gesture model could not be loaded.");
+        if (!disposed) setError(L("ບໍ່ສາມາດໂຫຼດແບບຈຳລອງກວດມືໄດ້.", "Hand gesture model could not be loaded."));
       });
 
     return () => {
@@ -253,33 +255,33 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
       <div className="gesture-instructions">
         <button className="primary-button wide" type="button" onClick={startCamera} disabled={!currentChallenge}>
           <Camera size={18} />
-          Open full-screen camera
+{L("ເປີດກ້ອງເຕັມຈໍ", "Open full-screen camera")}
         </button>
         {!modelReady && !error && (
           <p className="gesture-loading-note" aria-live="polite">
-            Preparing the hand detector… you can open the camera now; detection starts in a moment.
+            {L("ກຳລັງກຽມລະບົບກວດມື… ທ່ານເປີດກ້ອງໄດ້ເລີຍ, ການກວດຈະເລີ່ມໃນອີກບໍ່ດົນ.", "Preparing the hand detector… you can open the camera now; detection starts in a moment.")}
           </p>
         )}
         {error && <p className="form-error" aria-live="polite">{error}</p>}
       </div>
 
-      <div className="gesture-list" aria-label="Hand gesture challenges">
+      <div className="gesture-list" aria-label={L("ທ່າທາງມື", "Hand gesture challenges")}>
         {challenges.map((challenge) => {
           const isCurrent = currentChallenge?.id === challenge.id;
           return (
             <div className={`gesture-card ${challenge.passed ? "passed" : ""} ${isCurrent ? "current" : ""}`} key={challenge.id}>
               <span>
                 <GestureVisual className="gesture-card-visual" challengeId={challenge.id} />
-                {challenge.passed ? <Check size={16} /> : challenge.prompt}
+                {challenge.passed ? <Check size={16} /> : challengePrompt(challenge)}
               </span>
-              <small>{challenge.passed ? "Completed" : isCurrent ? challenge.instruction : "Waiting for previous gesture"}</small>
+              <small>{challenge.passed ? L("ສຳເລັດແລ້ວ", "Completed") : isCurrent ? challengeInstruction(challenge) : L("ລໍຖ້າທ່າກ່ອນໜ້າ", "Waiting for previous gesture")}</small>
             </div>
           );
         })}
       </div>
 
       {fullscreen && (
-        <div className="gesture-fullscreen" role="dialog" aria-modal="true" aria-label="Full-screen hand gesture challenge">
+        <div className="gesture-fullscreen" role="dialog" aria-modal="true" aria-label={L("ທ່າທາງມືແບບເຕັມຈໍ", "Full-screen hand gesture challenge")}>
           <video ref={videoRef} autoPlay playsInline muted />
           <div
             className={`gesture-target ${gestureMatched ? "matched" : handInsideTarget ? "inside" : ""}`}
@@ -301,16 +303,16 @@ export function HandGestureCapture({ challenges, onComplete }: HandGestureCaptur
           </div>
           <div className="gesture-topbar">
             <div>
-              <strong>{currentChallenge?.prompt ?? "Gesture complete"}</strong>
-              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched, currentChallenge?.instruction) : "Loading hand model"}</span>
+              <strong>{challengePrompt(currentChallenge) ?? L("ເຮັດທ່າຄົບແລ້ວ", "Gesture complete")}</strong>
+              <span>{modelReady ? fullscreenInstruction(metric, handInsideTarget, gestureMatched, challengeInstruction(currentChallenge)) : L("ກຳລັງໂຫຼດແບບຈຳລອງກວດມື", "Loading hand model")}</span>
             </div>
-            <button className="icon-button" type="button" onClick={stopCamera} aria-label="Close gesture camera">
+            <button className="icon-button" type="button" onClick={stopCamera} aria-label={L("ປິດກ້ອງ", "Close gesture camera")}>
               <X size={22} />
             </button>
           </div>
           <div className="gesture-debug-pill">
             <Hand size={16} />
-            {currentChallenge ? `${currentChallenge.prompt} | ${metric.handPresent ? `${metric.gesture ?? `${metric.fingerCount} fingers`} detected` : "Show your hand"}` : "Gesture complete"}
+            {currentChallenge ? `${challengePrompt(currentChallenge)} | ${metric.handPresent ? L(`ກວດພົບ ${metric.gesture ?? `${metric.fingerCount} ນິ້ວ`}`, `${metric.gesture ?? `${metric.fingerCount} fingers`} detected`) : L("ສະແດງມືຂອງທ່ານ", "Show your hand")}` : L("ເຮັດທ່າຄົບແລ້ວ", "Gesture complete")}
           </div>
         </div>
       )}
@@ -470,10 +472,10 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 function fullscreenInstruction(metric: GestureMetric, inside: boolean, matched: boolean, instruction?: string) {
-  if (matched) return "Matched. Passing gesture...";
-  if (!metric.handPresent) return "Show your hand inside the circle.";
-  if (!inside) return "Move your hand into the circle.";
-  return instruction ?? "Gesture detected in circle. Adjust fingers to match the prompt.";
+  if (matched) return L("ຖືກຕ້ອງ. ກຳລັງຜ່ານ...", "Matched. Passing gesture...");
+  if (!metric.handPresent) return L("ສະແດງມືພາຍໃນວົງມົນ.", "Show your hand inside the circle.");
+  if (!inside) return L("ເລື່ອນມືເຂົ້າໄປໃນວົງມົນ.", "Move your hand into the circle.");
+  return instruction ?? L("ກວດພົບມືໃນວົງມົນ. ປັບນິ້ວໃຫ້ກົງກັບທ່າທີ່ກຳນົດ.", "Gesture detected in circle. Adjust fingers to match the prompt.");
 }
 
 function gestureVisual(challengeId?: string) {

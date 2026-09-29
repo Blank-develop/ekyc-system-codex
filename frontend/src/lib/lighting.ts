@@ -1,3 +1,5 @@
+import { L } from "./i18n";
+
 export type LightingStatus = {
   level: "good" | "warning";
   message: string;
@@ -41,14 +43,14 @@ export function analyzeVideoLighting(video: HTMLVideoElement | null): LightingSt
   const underexposedRatio = underexposedPixels / Math.max(pixelCount, 1);
 
   if (mean < 0.2 || underexposedRatio > 0.42) {
-    return { level: "warning", message: "Lighting is too dark. Face a soft light before capture." };
+    return { level: "warning", message: L("ແສງມືດເກີນໄປ. ຫັນໜ້າເຂົ້າຫາແສງອ່ອນໆກ່ອນຖ່າຍ.", "Lighting is too dark. Face a soft light before capture.") };
   }
   if (mean > 0.82 || overexposedRatio > 0.36) {
-    return { level: "warning", message: "Lighting is too bright. Move away from glare or backlight." };
+    return { level: "warning", message: L("ແສງສະຫວ່າງເກີນໄປ. ຍ້າຍອອກຈາກແສງຈ້າ ຫຼື ແສງທາງຫຼັງ.", "Lighting is too bright. Move away from glare or backlight.") };
   }
   if (contrast < 0.09) {
-    return { level: "warning", message: "Lighting is too flat. Add gentle front light and avoid shadows." };
+    return { level: "warning", message: L("ແສງບໍ່ພໍ. ເພີ່ມແສງອ່ອນໆທາງໜ້າ ແລະ ຫຼີກລ່ຽງເງົາ.", "Lighting is too flat. Add gentle front light and avoid shadows.") };
   }
 
-  return { level: "good", message: "Lighting looks good for capture." };
+  return { level: "good", message: L("ແສງພ້ອມສຳລັບຖ່າຍຮູບ.", "Lighting looks good for capture.") };
 }

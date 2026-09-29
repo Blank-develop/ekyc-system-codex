@@ -99,6 +99,59 @@ def test_printed_name_pair_prefers_complete_identity_tokens_over_ocr_noise() -> 
     assert corrected == "NATTHANIT MONECHANDY"
 
 
+def test_printed_name_pair_replaces_over_noise_without_replacing_surname() -> None:
+    corrected = MrzAnalyzer._corroborate_name_with_printed_fields(
+        "OVER MONECHANDY",
+        "\n".join(
+            [
+                "MONECHANDY",
+                "NATTHANIT",
+                "OVER",
+                "P<LAOMONECHANDY<<NATTHANIT<<<<<<<<<<<<<<<<<<",
+            ]
+        ),
+    )
+
+    assert corrected == "NATTHANIT MONECHANDY"
+
+
+def test_printed_name_pair_does_not_degrade_repeated_correct_name() -> None:
+    corrected = MrzAnalyzer._corroborate_name_with_printed_fields(
+        "NATTHANIT MONECHANDY",
+        "\n".join(
+            [
+                "NNS",
+                "MONECHANDY",
+                "NATTHANIT",
+                "SHNOLNL",
+                "MONECHANDY",
+                "NATTHANIT",
+                "P<LAOMONECHANDY<<NATTHANIT<<<<<<<<<<<<<<<<<<",
+            ]
+        ),
+    )
+
+    assert corrected == "NATTHANIT MONECHANDY"
+
+
+def test_printed_name_pair_does_not_replace_single_mrz_supported_name_with_over() -> None:
+    corrected = MrzAnalyzer._corroborate_name_with_printed_fields(
+        "ATTHANIT NONECHANDY",
+        "\n".join(
+            [
+                "MONECHANDY",
+                "OVER",
+                "MONECHANDY",
+                "NATTHANIT",
+                "MOLAOMONECHANDY<<NA",
+                "PA04906464NANDYSSNATTHANIT<<<<<",
+            ]
+        ),
+    )
+
+    assert corrected == "NATTHANIT MONECHANDY"
+
+
 def test_rotated_mrz_combines_visual_prefix_with_check_digit_protected_tail() -> None:
     noisy_ocr = "\n".join(
         [

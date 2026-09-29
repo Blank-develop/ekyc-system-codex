@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 import time
 from uuid import UUID
@@ -33,10 +34,12 @@ from app.models.schemas import (
     UserProfile,
     UserProfileListResponse,
     VerificationResult,
+    WatchlistAdjudicateRequest,
 )
 from app.services import auth as auth_service
 from app.services.attempt_store import attempt_store
 from app.services.evidence_store import evidence_store
+from app.services.watchlist_store import watchlist_store
 from app.services.audit import audit_log
 from app.services.key_provider import resolve_secret
 from app.services.notifier import get_notifier, mask_destination
@@ -49,6 +52,7 @@ from app.services.session_store import store
 
 router = APIRouter()
 settings = get_settings()
+logger = logging.getLogger(__name__)
 document_analyzers = {
     "passport": PassportFraudAnalyzer(),
     "lao_id_card": LaoIdCardFraudAnalyzer(),
@@ -158,6 +162,16 @@ def _get_session(session_id: UUID, request: Request) -> VerificationResult:
         if not store.validate_token(session_id, token):
             raise HTTPException(status_code=403, detail="Invalid or missing session token.")
     return session
+
+
+def _enforce_not_watchlisted(session_id: UUID) -> None:
+    """Hard-stop the flow once a watchlist match exists for the session. A matched
+    person cannot continue through the remaining steps; an officer must adjudicate."""
+    if watchlist_store.has_hits(session_id):
+        raise HTTPException(
+            status_code=403,
+            detail="WATCHLIST_MATCH: verification halted. This person matches a watchlist entry — refer to an officer.",
+        )
 
 
 async def _read_upload(file: UploadFile) -> bytes:
@@ -360,7 +374,46 @@ async def upload_document(
         analysis.signals.extend(face_result.signals)
         if analysis.status == "passed":
             analysis.status = "rejected"
-    return _record_attempt(store.set_document(session_id, analysis), request, step="document", action="document_upload")
+    # Biographic watchlist screening: match the document identity against the
+    # government-supplied list and raise an officer alert on a hit. Fail-open —
+    # a screening error never blocks the traveller.
+    try:
+        session = _get_session(session_id, request)
+        matches = watchlist_store.screen(
+            passport_number=analysis.ocr.passport_number or analysis.ocr.document_number,
+            full_name=analysis.ocr.full_name,
+            date_of_birth=analysis.ocr.date_of_birth,
+            nationality=analysis.ocr.nationality,
+        )
+        if matches:
+            top = matches[0]
+            for match in matches:
+                watchlist_store.record_hit(session_id, session.user_id, match)
+            analysis.signals.append(_signal(
+                "WATCHLIST_HIT_BIOGRAPHIC",
+                f"Document identity matches a watchlisted person ({top.matched_on.replace('_', '+')}). Refer to an officer.",
+                "high",
+                min(1.0, top.confidence),
+            ))
+            analysis.checks["watchlist_hit_count"] = len(matches)
+            analysis.checks["watchlist_top_confidence"] = round(top.confidence, 3)
+        # Face leg: screen the document portrait against the enrolled faces.
+        face_matches = watchlist_store.screen_face(face_result.embedding)
+        if face_matches:
+            for match in face_matches:
+                watchlist_store.record_face_hit(session_id, session.user_id, match, probe_bytes=content)
+            analysis.signals.append(_signal(
+                "WATCHLIST_HIT_FACE",
+                f"Document portrait resembles a watchlisted person ({int(round(face_matches[0].confidence * 100))}%). Refer to an officer.",
+                "medium",  # alert only — a face match is never an auto-deny
+                min(1.0, face_matches[0].confidence),
+            ))
+            analysis.checks["watchlist_face_hit_count"] = len(face_matches)
+    except Exception:  # noqa: BLE001 — screening is best-effort, never fatal
+        logger.exception("watchlist screening failed for session %s", session_id)
+    result = _record_attempt(store.set_document(session_id, analysis), request, step="document", action="document_upload")
+    result.watchlist_blocked = watchlist_store.has_hits(session_id)
+    return result
 
 
 @router.post("/verifications/{session_id}/challenge", response_model=VerificationResult)
@@ -373,6 +426,7 @@ async def complete_challenge(
     frames: list[UploadFile] | None = File(default=None),
 ) -> VerificationResult:
     session = _get_session(session_id, request)
+    _enforce_not_watchlisted(session_id)
     if challenge_id in {challenge.id for challenge in session.active_challenges}:
         raise HTTPException(status_code=409, detail="Active liveness requires server-verified face evidence.")
     target = next((c for c in session.hand_challenges if c.id == challenge_id), None)
@@ -464,6 +518,7 @@ async def complete_active_liveness(
     frames: list[UploadFile] | None = File(default=None),
 ) -> VerificationResult:
     session = _get_session(session_id, request)
+    _enforce_not_watchlisted(session_id)
     if session.document.status != "passed":
         raise HTTPException(status_code=409, detail="Document must pass before active liveness.")
     if challenge_id not in {challenge.id for challenge in session.active_challenges}:
@@ -605,6 +660,7 @@ async def analyze_selfie(
 ) -> VerificationResult:
     started_at = time.perf_counter()
     _get_session(session_id, request)
+    _enforce_not_watchlisted(session_id)
     selfie_files = frames or ([file] if file else [])
     if not selfie_files:
         raise HTTPException(status_code=400, detail="At least one selfie frame is required.")
@@ -635,7 +691,27 @@ async def analyze_selfie(
         }
     )
     store.set_selfie_face_embedding(session_id, selfie_face.embedding if analysis.passive_liveness_passed else None)
-    return _record_attempt(store.set_selfie(session_id, analysis), request, step="selfie", action="selfie_capture")
+    # Face watchlist: screen the live selfie — the person actually present — so a
+    # listed face is caught even on a fraudulent document. Alert only (fail-open).
+    try:
+        face_matches = watchlist_store.screen_face(selfie_face.embedding)
+        if face_matches:
+            session = _get_session(session_id, request)
+            for match in face_matches:
+                watchlist_store.record_face_hit(
+                    session_id, session.user_id, match, probe_bytes=representative_content
+                )
+            analysis.selfie_signals.append(_signal(
+                "WATCHLIST_HIT_FACE",
+                f"Live selfie resembles a watchlisted person ({int(round(face_matches[0].confidence * 100))}%). Refer to an officer.",
+                "medium",  # alert only — a face match is never an auto-deny
+                min(1.0, face_matches[0].confidence),
+            ))
+    except Exception:  # noqa: BLE001 — screening is best-effort, never fatal
+        logger.exception("watchlist face screening failed for session %s", session_id)
+    result = _record_attempt(store.set_selfie(session_id, analysis), request, step="selfie", action="selfie_capture")
+    result.watchlist_blocked = watchlist_store.has_hits(session_id)
+    return result
 
 
 @router.post("/verifications/{session_id}/enroll-face", response_model=FaceEnrollmentResponse)
@@ -902,6 +978,90 @@ async def get_evidence_frame(frame_id: str, request: Request, actor: str = Depen
 @router.post("/evidence/purge-expired", dependencies=[Depends(require_admin)])
 async def purge_expired_evidence() -> dict:
     return evidence_store.purge_expired()
+
+
+# ----------------------------------------------------------------- watchlist
+@router.get("/watchlist/summary", dependencies=[Depends(require_admin)])
+async def watchlist_summary() -> dict:
+    """Counts for the admin dashboard: list size and pending officer alerts."""
+    return watchlist_store.summary()
+
+
+@router.get("/watchlist/hits", dependencies=[Depends(require_admin)])
+async def watchlist_hits(status: str | None = None, limit: int = 100, offset: int = 0) -> dict:
+    """Watchlist alerts, newest first. Filter by status (pending/confirmed/dismissed)."""
+    return {"hits": watchlist_store.list_hits(status=status, limit=limit, offset=offset)}
+
+
+@router.post("/watchlist/hits/{hit_id}/adjudicate", dependencies=[Depends(require_admin)])
+async def adjudicate_watchlist_hit(
+    hit_id: str,
+    payload: WatchlistAdjudicateRequest,
+    request: Request,
+    actor: str = Depends(current_admin_subject),
+) -> dict:
+    """Officer decision on an alert: confirm (a real match) or dismiss (false alarm)."""
+    ok = watchlist_store.adjudicate_hit(hit_id, payload.status, actor, payload.note)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Watchlist hit not found or invalid status.")
+    audit_log.record("watchlist", "adjudicate", actor=actor, subject=hit_id,
+                     detail={"status": payload.status})
+    return {"ok": True, "hit_id": hit_id, "status": payload.status}
+
+
+@router.get("/watchlist/subjects", dependencies=[Depends(require_admin)])
+async def watchlist_subjects(query: str | None = None, limit: int = 100, offset: int = 0) -> dict:
+    """Browse the imported list (officer review / spot-check)."""
+    return {"subjects": watchlist_store.list_subjects(query=query, limit=limit, offset=offset)}
+
+
+@router.post("/watchlist/subjects/face", dependencies=[Depends(require_admin)])
+async def add_watchlist_face(
+    request: Request,
+    file: UploadFile = File(...),
+    full_name: str = Form(...),
+    reason: str | None = Form(default=None),
+    actor: str = Depends(current_admin_subject),
+) -> dict:
+    """Enrol one person by face photo (a plain face image, not a document)."""
+    content = await _read_upload(file)
+    face = await run_in_threadpool(face_recognizer.extract, content, "match")
+    if face.embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected in the photo. Use a clear, front-facing image.")
+    subject = watchlist_store.add_face_subject(
+        full_name=full_name, embedding=face.embedding, photo_bytes=content, reason=reason,
+    )
+    audit_log.record("watchlist", "enrol_face", actor=actor, subject=subject["id"],
+                     detail={"full_name": full_name})
+    return subject
+
+
+@router.delete("/watchlist/subjects/{subject_id}", dependencies=[Depends(require_admin)])
+async def delete_watchlist_subject(
+    subject_id: str, request: Request, actor: str = Depends(current_admin_subject)
+) -> dict:
+    """Remove one person from the watchlist (and delete their photo)."""
+    ok = watchlist_store.remove_subject(subject_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Watchlist subject not found.")
+    audit_log.record("watchlist", "remove_subject", actor=actor, subject=subject_id)
+    return {"deleted": True, "subject_id": subject_id}
+
+
+@router.get("/watchlist/subjects/{subject_id}/photo", dependencies=[Depends(require_admin)])
+async def watchlist_subject_photo(subject_id: str):
+    data = watchlist_store.read_subject_photo(subject_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No photo for this subject.")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@router.get("/watchlist/hits/{hit_id}/probe", dependencies=[Depends(require_admin)])
+async def watchlist_hit_probe(hit_id: str):
+    data = watchlist_store.read_hit_probe(hit_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No probe image for this hit.")
+    return Response(content=data, media_type="image/jpeg")
 
 
 @router.get("/attempts", response_model=AttemptListResponse, dependencies=[Depends(require_admin)])

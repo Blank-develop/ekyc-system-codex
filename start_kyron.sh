@@ -50,6 +50,11 @@ export LALIGENCE_EVIDENCE_ENABLED="${LALIGENCE_EVIDENCE_ENABLED:-true}"
 export LALIGENCE_EVIDENCE_ROOT="$PWD/evidence"
 export LALIGENCE_EVIDENCE_RETENTION_DAYS="${LALIGENCE_EVIDENCE_RETENTION_DAYS:-1825}"
 export LALIGENCE_CORS_ORIGINS="https://$IP:$PORT,https://localhost:$PORT"
+# Watchlist ("blacklist") biographic screening. Import a list first, e.g.:
+#   PYTHONPATH=backend .venv/bin/python scripts/import_watchlist.py <list.csv> --replace
+# Watchlist screening is enabled for this deployment. An explicit environment
+# value can still override it for maintenance or isolated tests.
+export LALIGENCE_WATCHLIST_ENABLED="${LALIGENCE_WATCHLIST_ENABLED:-true}"
 
 echo "Kyron eKYC  ->  https://$IP:$PORT"
 echo "Admin       ->  https://$IP:$PORT/#admin   (admin / Kyron#Admin2026)"
