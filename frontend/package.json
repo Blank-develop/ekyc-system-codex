@@ -11,7 +11,7 @@
   "dependencies": {
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/hands": "^0.4.1675469240",
-    "lucide-react": "^0.561.0",
+    "lucide-react": "^1.22.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "typescript": "^5.9.3"
